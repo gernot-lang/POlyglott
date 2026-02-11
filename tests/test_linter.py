@@ -284,6 +284,82 @@ terms:
         with pytest.raises(ValueError, match="must be a dictionary"):
             Glossary(str(glossary_file))
 
+    def test_source_term_case_insensitive_key(self, tmp_path):
+        """Test that glossary keys are normalized to lowercase.
+
+        Glossary: 'File: Datei' (capital F)
+        Source: 'open the file' (lowercase f)
+        Should match!
+        """
+        glossary_file = tmp_path / "glossary.yaml"
+        glossary_file.write_text("language: de\nterms:\n  File: Datei\n")
+
+        glossary = Glossary(str(glossary_file))
+
+        # Lowercase in source should match uppercase glossary key
+        error = glossary.check_term("Open the file", "Öffnen Sie die Datei")
+        assert error is None
+
+    def test_source_term_case_insensitive_matching(self, tmp_path):
+        """Test case-insensitive matching for source terms."""
+        glossary_file = tmp_path / "glossary.yaml"
+        glossary_file.write_text("language: de\nterms:\n  pipeline: Pipeline\n")
+
+        glossary = Glossary(str(glossary_file))
+
+        # All these should match
+        test_cases = [
+            ("pipeline", "Pipeline"),
+            ("Pipeline", "Pipeline"),
+            ("PIPELINE", "Pipeline"),
+            ("The pipeline is", "Die Pipeline ist"),
+            ("The Pipeline is", "Die Pipeline ist"),
+            ("THE PIPELINE IS", "Die Pipeline ist"),
+        ]
+
+        for msgid, msgstr in test_cases:
+            error = glossary.check_term(msgid, msgstr)
+            assert error is None, f"Failed for msgid='{msgid}'"
+
+    def test_translation_case_insensitive_matching(self, tmp_path):
+        """Test case-insensitive matching for translations."""
+        glossary_file = tmp_path / "glossary.yaml"
+        glossary_file.write_text("language: de\nterms:\n  pipeline: Pipeline\n")
+
+        glossary = Glossary(str(glossary_file))
+
+        # All these translations should match (case-insensitive)
+        test_cases = [
+            ("pipeline", "pipeline"),      # lowercase
+            ("pipeline", "Pipeline"),      # exact match
+            ("pipeline", "PIPELINE"),      # uppercase
+            ("pipeline", "Die pipeline ist"),  # in sentence
+            ("pipeline", "Die Pipeline ist"),  # in sentence, capitalized
+        ]
+
+        for msgid, msgstr in test_cases:
+            error = glossary.check_term(msgid, msgstr)
+            assert error is None, f"Failed for msgstr='{msgstr}'"
+
+    def test_mixed_case_glossary_keys(self, tmp_path):
+        """Test that mixed-case glossary keys are normalized."""
+        glossary_file = tmp_path / "glossary.yaml"
+        glossary_file.write_text("""language: de
+terms:
+  File: Datei
+  Pipeline: Pipeline
+  NODE: Knoten
+  eDge: Kante
+""")
+
+        glossary = Glossary(str(glossary_file))
+
+        # All lowercase source terms should match
+        assert glossary.check_term("Open the file", "Öffnen Sie die Datei") is None
+        assert glossary.check_term("pipeline status", "Pipeline-Status") is None
+        assert glossary.check_term("graph node", "Graph-Knoten") is None
+        assert glossary.check_term("edge weight", "Kante Gewicht") is None
+
     def test_check_term_match(self, tmp_path):
         """Test glossary term checking with correct term."""
         glossary_file = tmp_path / "glossary.yaml"

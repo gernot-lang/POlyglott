@@ -76,7 +76,9 @@ class Glossary:
             )
 
         self.language = data.get('language', 'unknown')
-        self.terms = data['terms']
+
+        # Normalize glossary keys to lowercase for case-insensitive matching
+        self.terms = {key.lower(): value for key, value in data['terms'].items()}
 
         # Precompile regex patterns for performance
         self._patterns = {}
@@ -105,13 +107,14 @@ class Glossary:
             return None
 
         for source_term, data in self._patterns.items():
-            # Check if source term appears in msgid
+            # Check if source term appears in msgid (case-insensitive)
             if data['source_pattern'].search(msgid):
                 expected_translation = data['translation']
 
-                # Check if translation uses the expected term (case-sensitive)
+                # Check if translation uses the expected term (case-insensitive)
                 translation_pattern = re.compile(
-                    r'\b' + re.escape(expected_translation) + r'\b'
+                    r'\b' + re.escape(expected_translation) + r'\b',
+                    re.IGNORECASE
                 )
 
                 if not translation_pattern.search(msgstr):

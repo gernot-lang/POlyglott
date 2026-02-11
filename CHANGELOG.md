@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-02-11
+
+### Fixed
+
+- Glossary term matching is now fully case-insensitive for both source and translation
+- Glossary keys are normalized to lowercase on load (e.g., `File:` and `file:` treated identically)
+- Translation matching now uses case-insensitive comparison (e.g., `Pipeline` matches `pipeline`)
+- Fixes false positives where capitalization differences caused term mismatch warnings
+
 ## [0.3.2] - 2026-02-11
 
 ### Fixed
@@ -68,6 +77,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suite (34 tests covering parser, exporter, and CLI)
 
 [Unreleased]: #
+
+[0.3.3]: #
 
 [0.3.2]: #
 
