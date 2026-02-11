@@ -23,7 +23,7 @@ class TestCLI:
         )
 
         assert result.returncode == 0
-        assert "0.3.2" in result.stdout
+        assert "0.3.3" in result.stdout
 
     def test_scan_single_file_to_stdout(self):
         """Test scanning a single file to stdout."""
