@@ -142,6 +142,89 @@ Perfect for CI/CD pipelines:
 polyglott lint locales/de.po || exit 1
 ```
 
+### Context Inference
+
+POlyglott can infer the UI context for each translatable string based on its source code location. This helps translators understand where the text appears (form labels, navigation, log messages, etc.).
+
+#### Using Context Rules
+
+Create a `.polyglott-context.yaml` file to map file path patterns to context labels:
+
+```yaml
+rules:
+  - pattern: "tables.py"
+    context: column_header
+
+  - pattern: "forms.py"
+    context: form_label
+
+  - pattern: "models.py"
+    context: field_label
+
+  - pattern: "views.py"
+    context: message
+
+  - pattern: "management/commands/"
+    context: log_message
+
+  - pattern: "sidebar.html"
+    context: navigation
+```
+
+Use with scan or lint:
+
+```bash
+polyglott scan messages.po --context-rules .polyglott-context.yaml -o output.csv
+polyglott lint messages.po --context-rules .polyglott-context.yaml -o issues.csv
+```
+
+#### Django Preset
+
+For Django projects, use the built-in preset:
+
+```bash
+polyglott scan messages.po --preset django -o output.csv
+```
+
+The Django preset includes common patterns:
+- `tables.py` → column_header
+- `forms.py`, `forms/` → form_label
+- `models.py`, `serializers.py` → field_label
+- `views.py` → message
+- `management/commands/` → log_message
+- `admin.py` → admin
+- `sidebar`, `navbar` → navigation
+- `templates/` → template
+
+#### Context Columns
+
+When context inference is active, CSV output includes:
+
+- **context**: The inferred context label (or `ambiguous` for conflicting contexts, empty for no match)
+- **context_sources**: Semicolon-separated `filepath=context` pairs (only populated when ambiguous)
+
+**Ambiguity Handling:**
+- If all source references agree on a context → use that context
+- If one context has a clear majority → use the majority context
+- If there's a tie → mark as `ambiguous` and populate `context_sources`
+- If no references match any rule → leave empty
+
+**Example:**
+
+```bash
+$ polyglott scan django.po --preset django -o output.csv
+```
+
+The CSV will include context columns showing where each string originates in your code.
+
+#### Notes
+
+- Context flags are optional — without them, output is identical to Stage 1/2
+- `--context-rules` and `--preset` are mutually exclusive
+- Context labels are arbitrary strings you define
+- Rules use simple substring matching (first match wins)
+- Context appears in CSV output only (not in lint text format)
+
 ### Examples
 
 **Scan single file with sorting:**
@@ -185,13 +268,19 @@ polyglott lint --include "**/*.po" --exclude "vendor/*.po" --format text
 
 Multi-file mode adds `source_file` as the first column.
 
+Context inference (with `--context-rules` or `--preset`) adds:
+- `context`: Inferred UI context label
+- `context_sources`: Disambiguation info (only when ambiguous)
+
 ### Lint CSV Columns
 
-Lint mode adds three additional columns:
+Lint mode includes all scan columns plus:
 
 - `severity`: error, warning, or info
 - `check`: Name of the check that failed
 - `message`: Description of the issue
+
+Context columns (`context`, `context_sources`) are also included when using `--context-rules` or `--preset`.
 
 ### Lint Text Format
 
@@ -247,7 +336,8 @@ src/polyglott/
 ├── parser.py        # PO file parsing (polib)
 ├── exporter.py      # CSV export (pandas)
 ├── linter.py        # Quality checks and glossary
-└── formatter.py     # Text output formatting
+├── formatter.py     # Text output formatting
+└── context.py       # Context inference from source references
 ```
 
 ## Roadmap
@@ -256,7 +346,7 @@ POlyglott is under active development:
 
 - **Stage 1 (v0.1.0)**: ✅ PO scanning and CSV export
 - **Stage 2 (v0.2.0)**: ✅ Lint subcommand with glossary support
-- **Stage 3 (v0.3.0)**: Context inference from source code references
+- **Stage 3 (v0.3.0)**: ✅ Context inference from source code references
 - **Stage 4 (v0.4.0)**: Translation master CSV for multi-language management
 - **Stage 5 (v0.5.0)**: DeepL integration for machine translation
 

@@ -1,0 +1,47 @@
+# Test PO file for context inference
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+#: myapp/forms.py:10
+msgid "Email address"
+msgstr "E-Mail-Adresse"
+
+#: myapp/models.py:25
+msgid "Username"
+msgstr "Benutzername"
+
+#: myapp/views.py:15
+msgid "Login successful"
+msgstr "Anmeldung erfolgreich"
+
+#: myapp/tables.py:8
+msgid "Name"
+msgstr "Name"
+
+#: myapp/management/commands/import_data.py:30
+msgid "Processing file"
+msgstr "Datei wird verarbeitet"
+
+#: myapp/templates/sidebar.html:5
+msgid "Navigation"
+msgstr "Navigation"
+
+#: myapp/forms.py:12 myapp/forms.py:25
+msgid "Required field"
+msgstr "Pflichtfeld"
+
+#: myapp/forms.py:15 myapp/models.py:30
+msgid "Description"
+msgstr "Beschreibung"
+
+#: myapp/forms.py:20 myapp/views.py:40 myapp/models.py:35
+msgid "Status"
+msgstr "Status"
+
+#: myapp/unknown.py:10
+msgid "No rule matches"
+msgstr "Keine Regel passt"
+
+msgid "No references"
+msgstr "Keine Referenzen"
