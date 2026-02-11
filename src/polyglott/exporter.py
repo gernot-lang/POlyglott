@@ -14,7 +14,8 @@ def export_to_csv(
         sort_by: Optional[str] = None,
         multi_file: bool = False,
         lint_mode: bool = False,
-        violations: Optional[List] = None
+        violations: Optional[List] = None,
+        context_data: Optional[dict] = None
 ) -> None:
     """Export PO entries to CSV format.
 
@@ -25,6 +26,7 @@ def export_to_csv(
         multi_file: Whether to include source_file column
         lint_mode: Whether to export in lint mode (with violations)
         violations: List of Violation objects (required if lint_mode=True)
+        context_data: Optional dict mapping entry keys to (context, context_sources) tuples
 
     Raises:
         ValueError: If sort_by field doesn't exist or lint_mode without violations
@@ -33,7 +35,7 @@ def export_to_csv(
         raise ValueError("violations required when lint_mode=True")
     if lint_mode:
         # Lint mode: export violations
-        df = _export_violations_csv(violations, multi_file)
+        df = _export_violations_csv(violations, multi_file, context_data)
     else:
         # Normal mode: export entries
         if not entries:
@@ -50,6 +52,9 @@ def export_to_csv(
                     "extracted_comments", "translator_comments", "references",
                     "fuzzy", "obsolete", "is_plural", "plural_index"
                 ]
+            # Add context columns if context_data is provided
+            if context_data is not None:
+                columns.extend(["context", "context_sources"])
             df = pd.DataFrame(columns=columns)
         else:
             # Convert entries to DataFrame
@@ -69,6 +74,14 @@ def export_to_csv(
                 }
                 if multi_file:
                     row["source_file"] = entry.source_file or ""
+
+                # Add context columns if context_data is provided
+                if context_data is not None:
+                    entry_key = (entry.msgid, entry.msgctxt, entry.plural_index)
+                    context, context_sources = context_data.get(entry_key, ('', ''))
+                    row["context"] = context
+                    row["context_sources"] = context_sources
+
                 data.append(row)
 
             df = pd.DataFrame(data)
@@ -79,6 +92,17 @@ def export_to_csv(
                     "source_file", "msgid", "msgstr", "msgctxt",
                     "extracted_comments", "translator_comments", "references",
                     "fuzzy", "obsolete", "is_plural", "plural_index"
+                ]
+                if context_data is not None:
+                    columns.extend(["context", "context_sources"])
+                df = df[columns]
+            elif context_data is not None:
+                # Single file mode with context - reorder to add context columns at end
+                columns = [
+                    "msgid", "msgstr", "msgctxt",
+                    "extracted_comments", "translator_comments", "references",
+                    "fuzzy", "obsolete", "is_plural", "plural_index",
+                    "context", "context_sources"
                 ]
                 df = df[columns]
 
@@ -95,12 +119,17 @@ def export_to_csv(
         df.to_csv(sys.stdout, index=False, encoding='utf-8')
 
 
-def _export_violations_csv(violations: List, multi_file: bool) -> pd.DataFrame:
+def _export_violations_csv(
+        violations: List,
+        multi_file: bool,
+        context_data: Optional[dict] = None
+) -> pd.DataFrame:
     """Export violations to a DataFrame.
 
     Args:
         violations: List of Violation objects
         multi_file: Whether to include source_file column
+        context_data: Optional dict mapping entry keys to (context, context_sources) tuples
 
     Returns:
         DataFrame with violation data
@@ -121,6 +150,9 @@ def _export_violations_csv(violations: List, multi_file: bool) -> pd.DataFrame:
                 "fuzzy", "obsolete", "is_plural", "plural_index",
                 "severity", "check", "message"
             ]
+        # Add context columns if context_data is provided
+        if context_data is not None:
+            columns.extend(["context", "context_sources"])
         return pd.DataFrame(columns=columns)
 
     # Convert violations to rows
@@ -144,6 +176,14 @@ def _export_violations_csv(violations: List, multi_file: bool) -> pd.DataFrame:
         }
         if multi_file:
             row["source_file"] = entry.source_file or ""
+
+        # Add context columns if context_data is provided
+        if context_data is not None:
+            entry_key = (entry.msgid, entry.msgctxt, entry.plural_index)
+            context, context_sources = context_data.get(entry_key, ('', ''))
+            row["context"] = context
+            row["context_sources"] = context_sources
+
         data.append(row)
 
     df = pd.DataFrame(data)
@@ -163,5 +203,9 @@ def _export_violations_csv(violations: List, multi_file: bool) -> pd.DataFrame:
             "fuzzy", "obsolete", "is_plural", "plural_index",
             "severity", "check", "message"
         ]
+
+    # Add context columns if context_data is provided
+    if context_data is not None:
+        columns.extend(["context", "context_sources"])
 
     return df[columns]

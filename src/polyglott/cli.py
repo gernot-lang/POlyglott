@@ -12,6 +12,7 @@ from polyglott.parser import POParser, MultiPOParser
 from polyglott.exporter import export_to_csv
 from polyglott.linter import Glossary, Severity, run_checks
 from polyglott.formatter import format_text_output
+from polyglott.context import load_context_rules, load_preset, match_context
 
 
 def discover_po_files(
@@ -48,6 +49,34 @@ def discover_po_files(
     return sorted(files)
 
 
+def load_context_rules_from_args(args: argparse.Namespace) -> Optional[List[dict]]:
+    """Load context rules from CLI arguments.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        List of context rules or None if no context flags provided
+
+    Raises:
+        ValueError: If both context_rules and preset are provided
+        FileNotFoundError: If rules file doesn't exist
+    """
+    has_context_rules = hasattr(args, 'context_rules') and args.context_rules
+    has_preset = hasattr(args, 'preset') and args.preset
+
+    # Check mutual exclusivity
+    if has_context_rules and has_preset:
+        raise ValueError("Cannot specify both --context-rules and --preset")
+
+    if has_context_rules:
+        return load_context_rules(args.context_rules)
+    elif has_preset:
+        return load_preset(args.preset)
+    else:
+        return None
+
+
 def cmd_lint(args: argparse.Namespace) -> int:
     """Execute the lint subcommand.
 
@@ -58,6 +87,13 @@ def cmd_lint(args: argparse.Namespace) -> int:
         Exit code (0=clean, 1=errors, 2=warnings only)
     """
     try:
+        # Load context rules if specified
+        try:
+            context_rules = load_context_rules_from_args(args)
+        except (ValueError, FileNotFoundError) as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
         # Determine input files
         if args.file and args.include:
             print("Error: Cannot specify both FILE and --include", file=sys.stderr)
@@ -123,6 +159,15 @@ def cmd_lint(args: argparse.Namespace) -> int:
             if severity_order[v.severity.value] >= min_severity
         ]
 
+        # Compute context for each entry if rules are provided
+        context_data = None
+        if context_rules:
+            context_data = {}
+            for entry in entries:
+                context, context_sources = match_context(entry.references, context_rules)
+                entry_key = (entry.msgid, entry.msgctxt, entry.plural_index)
+                context_data[entry_key] = (context, context_sources)
+
         # Output results
         if args.format == "text":
             output = format_text_output(violations)
@@ -137,7 +182,8 @@ def cmd_lint(args: argparse.Namespace) -> int:
                 output_file=args.output,
                 multi_file=multi_file,
                 lint_mode=True,
-                violations=violations
+                violations=violations,
+                context_data=context_data
             )
 
         # Determine exit code
@@ -168,6 +214,13 @@ def cmd_scan(args: argparse.Namespace) -> int:
         Exit code (0 for success, 1 for error)
     """
     try:
+        # Load context rules if specified
+        try:
+            context_rules = load_context_rules_from_args(args)
+        except (ValueError, FileNotFoundError) as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
         # Determine input files
         if args.file and args.include:
             print("Error: Cannot specify both FILE and --include", file=sys.stderr)
@@ -208,12 +261,24 @@ def cmd_scan(args: argparse.Namespace) -> int:
             print("Error: Must specify either FILE or --include", file=sys.stderr)
             return 1
 
+        # Compute context for each entry if rules are provided
+        context_data = None
+        if context_rules:
+            context_data = {}
+            for entry in entries:
+                context, context_sources = match_context(entry.references, context_rules)
+                # Use a tuple of key fields as the dictionary key
+                # This handles plurals correctly (same msgid but different plural_index)
+                entry_key = (entry.msgid, entry.msgctxt, entry.plural_index)
+                context_data[entry_key] = (context, context_sources)
+
         # Export to CSV
         export_to_csv(
             entries,
             output_file=args.output,
             sort_by=args.sort_by,
-            multi_file=multi_file
+            multi_file=multi_file,
+            context_data=context_data
         )
 
         # Print statistics to stderr (keeps stdout clean for CSV)
@@ -290,6 +355,16 @@ def main() -> int:
         help="Sort output by field"
     )
 
+    scan_parser.add_argument(
+        "--context-rules",
+        help="Path to YAML context rules file"
+    )
+
+    scan_parser.add_argument(
+        "--preset",
+        help="Use built-in context preset (e.g., 'django')"
+    )
+
     # Lint subcommand
     lint_parser = subparsers.add_parser(
         "lint",
@@ -350,6 +425,16 @@ def main() -> int:
         action="append",
         dest="no_check",
         help="Exclude specified check(s) (repeatable)"
+    )
+
+    lint_parser.add_argument(
+        "--context-rules",
+        help="Path to YAML context rules file"
+    )
+
+    lint_parser.add_argument(
+        "--preset",
+        help="Use built-in context preset (e.g., 'django')"
     )
 
     # Parse arguments
