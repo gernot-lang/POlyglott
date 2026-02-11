@@ -5,7 +5,6 @@ from pathlib import Path
 
 from polyglott.parser import POParser, MultiPOParser, POEntryData, POStatistics
 
-
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 

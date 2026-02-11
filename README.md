@@ -73,16 +73,19 @@ Available sort fields: `msgid`, `msgstr`, `source_file`, `fuzzy`
 ### Examples
 
 **Single file with sorting:**
+
 ```bash
 polyglott scan de.po --sort-by msgid -o german.csv
 ```
 
 **Multiple languages with statistics:**
+
 ```bash
 polyglott scan --include "locales/*/LC_MESSAGES/*.po" -o all_translations.csv
 ```
 
 **Exclude test files:**
+
 ```bash
 polyglott scan --include "**/*.po" --exclude "tests/*.po" --exclude "vendor/*.po"
 ```
@@ -176,6 +179,7 @@ MIT License - see [LICENSE.md](LICENSE.md) for details.
 ## Acknowledgments
 
 Built with:
+
 - [polib](https://pypi.org/project/polib/) - PO file parsing
 - [pandas](https://pandas.pydata.org/) - Data manipulation and CSV export
 - [pytest](https://pytest.org/) - Testing framework

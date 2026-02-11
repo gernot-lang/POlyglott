@@ -13,8 +13,8 @@ from polyglott.exporter import export_to_csv
 
 
 def discover_po_files(
-    include_patterns: List[str],
-    exclude_patterns: Optional[List[str]] = None
+        include_patterns: List[str],
+        exclude_patterns: Optional[List[str]] = None
 ) -> List[str]:
     """Discover PO files using glob patterns.
 

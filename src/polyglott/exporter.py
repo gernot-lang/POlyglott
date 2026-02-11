@@ -9,10 +9,10 @@ from polyglott.parser import POEntryData
 
 
 def export_to_csv(
-    entries: List[POEntryData],
-    output_file: Optional[str] = None,
-    sort_by: Optional[str] = None,
-    multi_file: bool = False
+        entries: List[POEntryData],
+        output_file: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        multi_file: bool = False
 ) -> None:
     """Export PO entries to CSV format.
 

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-02-11
 
 ### Added
+
 - PO file parsing with full metadata extraction (msgid, msgstr, msgctxt, comments, references, flags)
 - CSV export with pandas for single and multiple PO files
 - CLI with `scan` subcommand for basic PO file processing
@@ -21,4 +22,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suite (34 tests covering parser, exporter, and CLI)
 
 [Unreleased]: #
+
 [0.1.0]: #
