@@ -116,37 +116,77 @@ git branch -d feature/feature-name
 
 Manual testing happens after tagging a release on `main`. If bugs or deficiencies are found:
 
+**CRITICAL: Follow Test-Driven Development (TDD) for all bugfixes:**
+1. Write a failing test that reproduces the bug
+2. Verify the test fails with the exact error
+3. Fix the code
+4. Verify the test passes
+5. Ensure all other tests still pass
+
 ```bash
 # 1. Branch from main (where the tag is)
 git checkout main
 git checkout -b fix/description
 
-# 2. Fix the issue, commit
-git add .
-git commit -m "fix(lint): handle empty glossary file without crash"
+# 2. Write failing test first (TDD)
+# Add test to appropriate test_*.py file that reproduces the bug
+pytest tests/test_module.py::test_new_bug -v  # Should FAIL
 
-# 3. Merge to develop first (so develop stays current)
+# 3. Fix the issue
+# Implement the fix in source code
+
+# 4. Verify test passes
+pytest tests/test_module.py::test_new_bug -v  # Should PASS
+pytest  # All tests must pass
+
+# 5. Commit fix and test together
+git add .
+git commit -m "fix(scope): description
+
+- Add test to reproduce bug
+- Fix actual issue
+- Clear explanation of root cause"
+
+# 6. Update CHANGELOG.md (MANDATORY)
+# Add entry under new [0.X.Y] section with:
+# - Clear description of what was fixed
+# - User-facing impact, not implementation details
+git add CHANGELOG.md
+git commit -m "docs: update CHANGELOG for v0.X.Y"
+
+# 7. Merge to develop first (so develop stays current)
 git checkout develop
 git merge --no-ff fix/description
 
-# 4. Merge to main
+# 8. Merge to main
 git checkout main
 git merge --no-ff fix/description
 
-# 5. Bump patch version on main
-bump-my-version bump patch
+# 9. Bump patch version on main
+.venv/bin/bump-my-version bump patch
 
-# 6. Tag
-git tag -a v0.2.1 -m "Fix empty glossary crash in lint"
+# 10. Tag with descriptive message
+git tag -a v0.X.Y -m "Fix description (concise)"
 
-# 7. Push everything
+# 11. Update version test (if exists)
+# Edit tests/test_cli.py version check to match new version
+git add tests/test_cli.py
+git commit -m "test: update version check to 0.X.Y"
+
+# 12. Push everything
 git push origin main develop --tags
 
-# 8. Clean up
+# 13. Clean up
 git branch -d fix/description
 ```
 
-Key differences from feature branches: bugfix branches merge to **both** `main` and `develop`, and bump **patch** (v0.2.0 → v0.2.1) instead of minor.
+**Key differences from feature branches:**
+- Branch from **main** (not develop) — fixes production code
+- Merge to **both** main and develop (not just develop)
+- Bump **patch** version (0.3.1 → 0.3.2), not minor
+- Version bump happens on **main** (not develop)
+- **TDD is mandatory** — test must reproduce bug before fixing
+- **CHANGELOG must be updated** — document the fix for users
 
 ### Key Rules
 
@@ -221,6 +261,20 @@ Follow [Keep a Changelog](https://keepachangelog.com/) strictly:
 
 ### Testing Discipline
 
+**Test-Driven Development (TDD):**
+
+POlyglott follows TDD principles, especially for bugfixes:
+
+1. **For new features**: Write tests alongside implementation (test as you go)
+2. **For bugfixes**: ALWAYS write failing test first, then fix
+3. **Verify tests fail**: Before fixing, confirm test reproduces the actual error
+4. **Verify tests pass**: After fixing, confirm test passes and all others still pass
+
+**Testing Requirements:**
+
 - All tests must pass before considering a stage complete
 - Each stage adds tests for its new functionality
 - Existing tests must continue to pass — no regressions
+- Bugfix tests must reproduce the exact error users reported
+- Test edge cases (Unicode, malformed PO files, plurals, empty data)
+- Use descriptive test names that explain what is being tested
