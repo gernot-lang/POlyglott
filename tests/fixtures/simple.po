@@ -1,0 +1,20 @@
+# Simple PO file for testing
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: de\n"
+
+#: main.py:10
+msgid "Hello"
+msgstr "Hallo"
+
+#: main.py:15
+msgid "Goodbye"
+msgstr ""
+
+#: utils.py:5
+msgid "Welcome"
+msgstr "Willkommen"
+
+msgid "Untranslated"
+msgstr ""

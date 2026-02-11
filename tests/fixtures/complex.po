@@ -1,0 +1,48 @@
+# Complex PO file with all features
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: en\n"
+
+#. Extracted comment explaining usage
+#: views.py:42 templates/home.html:15
+msgid "Simple message"
+msgstr "Translated message"
+
+# Translator comment with context
+#. This is for the navigation menu
+#: nav.py:10
+msgctxt "navigation"
+msgid "Home"
+msgstr "Start"
+
+#. Shows count of items
+#: items.py:20
+#, fuzzy
+msgid "Item"
+msgid_plural "Items"
+msgstr[0] "Gegenstand"
+msgstr[1] "Gegenstände"
+
+# Multiple references
+#: file1.py:10 file2.py:20 file3.py:30
+msgid "Shared message"
+msgstr "Geteilte Nachricht"
+
+#. Obsolete entry that should be tracked
+#~ msgid "Old message"
+#~ msgstr "Alte Nachricht"
+
+#. Fuzzy without translation
+#: test.py:5
+#, fuzzy
+msgid "Fuzzy untranslated"
+msgstr ""
+
+#. Entry with context and plural
+#: models.py:100
+msgctxt "database"
+msgid "Record"
+msgid_plural "Records"
+msgstr[0] "Datensatz"
+msgstr[1] "Datensätze"

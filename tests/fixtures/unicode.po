@@ -1,0 +1,29 @@
+# Unicode test file with various scripts
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: multi\n"
+
+#: test.py:1
+msgid "German umlauts"
+msgstr "Äpfel, Öfen, Übung, Straße"
+
+#: test.py:2
+msgid "Emoji support"
+msgstr "🎉 Party! 🚀 Rocket! ❤️ Love!"
+
+#: test.py:3
+msgid "Chinese characters"
+msgstr "你好世界"
+
+#: test.py:4
+msgid "Arabic script"
+msgstr "مرحبا بك"
+
+#: test.py:5
+msgid "Mixed: Hello 世界 🌍"
+msgstr "Mixed: Hallo Welt 🌏"
+
+#: test.py:6
+msgid "Special chars: \"quotes\" 'apostrophes' <tags>"
+msgstr "Sonderzeichen: \"Anführung\" 'Apostroph' <Tags>"
