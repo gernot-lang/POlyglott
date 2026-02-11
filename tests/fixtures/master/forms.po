@@ -1,0 +1,21 @@
+# Additional PO file for multi-file testing
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: de\n"
+
+#: forms/contact.py:10
+msgid "Username"
+msgstr "Benutzername"
+
+#: forms/login.py:8
+msgid "Password"
+msgstr "Kennwort"
+
+#: forms/register.py:15
+msgid "Email"
+msgstr "E-Mail"
+
+#: admin.py:20
+msgid "Save"
+msgstr "Speichern"

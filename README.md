@@ -187,6 +187,7 @@ polyglott scan messages.po --preset django -o output.csv
 ```
 
 The Django preset includes common patterns:
+
 - `tables.py` → column_header
 - `forms.py`, `forms/` → form_label
 - `models.py`, `serializers.py` → field_label
@@ -204,6 +205,7 @@ When context inference is active, CSV output includes:
 - **context_sources**: Semicolon-separated `filepath=context` pairs (only populated when ambiguous)
 
 **Ambiguity Handling:**
+
 - If all source references agree on a context → use that context
 - If one context has a clear majority → use the majority context
 - If there's a tie → mark as `ambiguous` and populate `context_sources`
@@ -224,6 +226,167 @@ The CSV will include context columns showing where each string originates in you
 - Context labels are arbitrary strings you define
 - Rules use simple substring matching (first match wins)
 - Context appears in CSV output only (not in lint text format)
+
+### Master CSV
+
+POlyglott can consolidate translations from multiple PO files into a **master CSV** that serves as the central translation registry. The master CSV deduplicates entries by msgid, tracks translation status, preserves human decisions, and detects conflicts when PO files diverge from accepted translations.
+
+#### What is Master CSV?
+
+The master CSV is a project-wide translation registry that:
+
+- **Deduplicates by msgid**: Same msgid across multiple PO files → single master row
+- **Tracks status lifecycle**: `empty` → `review` → `accepted`/`rejected` → `stale` → `conflict`
+- **Preserves human decisions**: Accepted/rejected translations survive rescans
+- **Auto-scores glossary matches**: Assigns quality score for exact glossary matches
+- **Refreshes context**: Context is recomputed on every rescan to reflect current codebase
+- **Detects conflicts**: Flags when PO files diverge from accepted translations
+
+#### Creating a Master CSV
+
+Use the `--master` flag instead of `-o/--output`:
+
+```bash
+polyglott scan messages.po --master polyglott-accepted-de.csv
+```
+
+**Filename format:** Must match `polyglott-accepted-<lang>.csv` pattern (e.g., `polyglott-accepted-de.csv`, `polyglott-accepted-fr.csv`)
+
+#### Master CSV Schema
+
+The master CSV has a fixed schema optimized for translation management:
+
+| Column | Description |
+|--------|-------------|
+| `msgid` | Source text (deduplication key) |
+| `msgstr` | Translation text |
+| `status` | Translation status (see below) |
+| `score` | Quality score (empty or "10" for glossary match) |
+| `context` | Inferred UI context |
+| `context_sources` | Disambiguation info (when ambiguous) |
+
+#### Status Values
+
+| Status | Meaning | Typical Workflow |
+|--------|---------|------------------|
+| `empty` | No translation yet | Initial scan of untranslated entries |
+| `review` | Has translation, needs review | Default for translated entries; edit in CSV |
+| `accepted` | Reviewed and approved | Mark as accepted after review |
+| `rejected` | Rejected translation | Mark as rejected to skip |
+| `conflict` | PO diverged from accepted | Resolve manually, then re-accept |
+| `stale` | Removed from PO files | Entry no longer in codebase |
+| `machine` | Machine-translated (future) | For auto-translated entries |
+
+#### Merge Workflow
+
+The master CSV merge preserves human decisions when rescanning:
+
+```bash
+# 1. Initial scan - creates master
+polyglott scan django.po --master polyglott-accepted-de.csv
+
+# 2. Review in CSV editor (Excel, LibreOffice, etc.)
+#    - Check translations in 'review' status
+#    - Change status to 'accepted' or 'rejected'
+#    - Optionally edit msgstr or add custom scores
+
+# 3. Rescan after code changes - updates master
+polyglott scan django.po --master polyglott-accepted-de.csv
+
+# Master CSV merge rules:
+# - accepted + matching PO → no change
+# - accepted + divergent PO → conflict (preserves your translation)
+# - rejected + present → no change
+# - review → updates msgstr from PO
+# - empty + now has msgstr → review
+# - missing from PO → stale
+```
+
+#### Multi-file Deduplication
+
+When scanning multiple PO files, the master CSV deduplicates by msgid:
+
+```bash
+polyglott scan --include "locales/*/django.po" --master polyglott-accepted-de.csv
+```
+
+**Deduplication rules:**
+- Same msgid across files → single master row
+- References aggregated from all files (for context inference)
+- Msgstr conflicts resolved by majority voting (most common wins)
+- Non-empty msgstr beats empty
+
+#### With Glossary Scoring
+
+Combine with `--glossary` to auto-score exact matches:
+
+```bash
+polyglott scan django.po \
+  --master polyglott-accepted-de.csv \
+  --glossary glossary-de.yaml
+```
+
+Entries with exact glossary matches (case-insensitive) receive `score: 10`. Scores are preserved on rescan (human decisions).
+
+#### With Context Rules
+
+Combine with `--context-rules` or `--preset` to populate context columns:
+
+```bash
+polyglott scan django.po \
+  --master polyglott-accepted-de.csv \
+  --preset django
+```
+
+Context is refreshed on every rescan (derived data, not a human decision).
+
+#### Conflict Detection
+
+When accepted translations diverge from PO files:
+
+```bash
+# Initial: Password → "Passwort" (accepted)
+polyglott scan de.po --master polyglott-accepted-de.csv
+# (mark Password as accepted in CSV)
+
+# Later: PO file changes Password → "Kennwort"
+polyglott scan de.po --master polyglott-accepted-de.csv
+
+# Master CSV:
+# msgid: Password
+# msgstr: Passwort (preserved)
+# status: conflict (flags the divergence)
+```
+
+**Resolution workflow:**
+1. Review the conflict
+2. Either accept the new PO translation or keep your version
+3. Manually update status back to `accepted`
+
+#### Status Transitions
+
+The merge workflow implements these status transitions:
+
+- **accepted** + matching PO → stays `accepted`
+- **accepted** + divergent PO → becomes `conflict`
+- **accepted** + missing from PO → becomes `stale`
+- **review** + present in PO → updates msgstr, stays `review`
+- **review** + missing from PO → becomes `stale`
+- **empty** + now has msgstr → becomes `review`, assigns score if glossary match
+- **empty** + still empty → stays `empty`
+- **empty** + missing from PO → becomes `stale`
+- **conflict** + present → stays `conflict` (manual resolution required)
+- **stale** + reappears in PO → becomes `review`, updates msgstr
+- **new msgid** → added as `empty` or `review`
+
+#### Notes
+
+- `--master` and `-o/--output` are mutually exclusive
+- Filename must match `polyglott-accepted-<lang>.csv` pattern
+- CSV uses UTF-8 BOM, all fields quoted, sorted by msgid
+- Score preservation: existing scores never overwritten (human decisions)
+- Context refresh: always recomputed from current PO files
+- Plurals and msgctxt: currently ignored in master CSV (v0.4.0 scope)
 
 ### Examples
 
@@ -269,6 +432,7 @@ polyglott lint --include "**/*.po" --exclude "vendor/*.po" --format text
 Multi-file mode adds `source_file` as the first column.
 
 Context inference (with `--context-rules` or `--preset`) adds:
+
 - `context`: Inferred UI context label
 - `context_sources`: Disambiguation info (only when ambiguous)
 
@@ -337,7 +501,8 @@ src/polyglott/
 ├── exporter.py      # CSV export (pandas)
 ├── linter.py        # Quality checks and glossary
 ├── formatter.py     # Text output formatting
-└── context.py       # Context inference from source references
+├── context.py       # Context inference from source references
+└── master.py        # Master CSV management and merge workflow
 ```
 
 ## Roadmap
@@ -347,7 +512,7 @@ POlyglott is under active development:
 - **Stage 1 (v0.1.0)**: ✅ PO scanning and CSV export
 - **Stage 2 (v0.2.0)**: ✅ Lint subcommand with glossary support
 - **Stage 3 (v0.3.0)**: ✅ Context inference from source code references
-- **Stage 4 (v0.4.0)**: Translation master CSV for multi-language management
+- **Stage 4 (v0.4.0)**: ✅ Translation master CSV for multi-language management
 - **Stage 5 (v0.5.0)**: DeepL integration for machine translation
 
 See `prompts/` directory for detailed stage specifications.
