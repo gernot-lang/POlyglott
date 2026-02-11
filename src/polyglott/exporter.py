@@ -9,10 +9,12 @@ from polyglott.parser import POEntryData
 
 
 def export_to_csv(
-    entries: List[POEntryData],
-    output_file: Optional[str] = None,
-    sort_by: Optional[str] = None,
-    multi_file: bool = False
+        entries: List[POEntryData],
+        output_file: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        multi_file: bool = False,
+        lint_mode: bool = False,
+        violations: Optional[List] = None
 ) -> None:
     """Export PO entries to CSV format.
 
@@ -21,64 +23,145 @@ def export_to_csv(
         output_file: Output file path (None for stdout)
         sort_by: Optional field name to sort by
         multi_file: Whether to include source_file column
+        lint_mode: Whether to export in lint mode (with violations)
+        violations: List of Violation objects (required if lint_mode=True)
 
     Raises:
-        ValueError: If sort_by field doesn't exist
+        ValueError: If sort_by field doesn't exist or lint_mode without violations
     """
-    if not entries:
-        # Handle empty case - write headers only
-        if multi_file:
-            columns = [
-                "source_file", "msgid", "msgstr", "msgctxt",
-                "extracted_comments", "translator_comments", "references",
-                "fuzzy", "obsolete", "is_plural", "plural_index"
-            ]
-        else:
-            columns = [
-                "msgid", "msgstr", "msgctxt",
-                "extracted_comments", "translator_comments", "references",
-                "fuzzy", "obsolete", "is_plural", "plural_index"
-            ]
-        df = pd.DataFrame(columns=columns)
+    if lint_mode and violations is None:
+        raise ValueError("violations required when lint_mode=True")
+    if lint_mode:
+        # Lint mode: export violations
+        df = _export_violations_csv(violations, multi_file)
     else:
-        # Convert entries to DataFrame
-        data = []
-        for entry in entries:
-            row = {
-                "msgid": entry.msgid,
-                "msgstr": entry.msgstr,
-                "msgctxt": entry.msgctxt if entry.msgctxt is not None else "",
-                "extracted_comments": entry.extracted_comments,
-                "translator_comments": entry.translator_comments,
-                "references": entry.references,
-                "fuzzy": entry.fuzzy,
-                "obsolete": entry.obsolete,
-                "is_plural": entry.is_plural,
-                "plural_index": entry.plural_index if entry.plural_index is not None else "",
-            }
+        # Normal mode: export entries
+        if not entries:
+            # Handle empty case - write headers only
             if multi_file:
-                row["source_file"] = entry.source_file or ""
-            data.append(row)
+                columns = [
+                    "source_file", "msgid", "msgstr", "msgctxt",
+                    "extracted_comments", "translator_comments", "references",
+                    "fuzzy", "obsolete", "is_plural", "plural_index"
+                ]
+            else:
+                columns = [
+                    "msgid", "msgstr", "msgctxt",
+                    "extracted_comments", "translator_comments", "references",
+                    "fuzzy", "obsolete", "is_plural", "plural_index"
+                ]
+            df = pd.DataFrame(columns=columns)
+        else:
+            # Convert entries to DataFrame
+            data = []
+            for entry in entries:
+                row = {
+                    "msgid": entry.msgid,
+                    "msgstr": entry.msgstr,
+                    "msgctxt": entry.msgctxt if entry.msgctxt is not None else "",
+                    "extracted_comments": entry.extracted_comments,
+                    "translator_comments": entry.translator_comments,
+                    "references": entry.references,
+                    "fuzzy": entry.fuzzy,
+                    "obsolete": entry.obsolete,
+                    "is_plural": entry.is_plural,
+                    "plural_index": entry.plural_index if entry.plural_index is not None else "",
+                }
+                if multi_file:
+                    row["source_file"] = entry.source_file or ""
+                data.append(row)
 
-        df = pd.DataFrame(data)
+            df = pd.DataFrame(data)
 
-        # Reorder columns for multi-file mode
-        if multi_file:
-            columns = [
-                "source_file", "msgid", "msgstr", "msgctxt",
-                "extracted_comments", "translator_comments", "references",
-                "fuzzy", "obsolete", "is_plural", "plural_index"
-            ]
-            df = df[columns]
+            # Reorder columns for multi-file mode
+            if multi_file:
+                columns = [
+                    "source_file", "msgid", "msgstr", "msgctxt",
+                    "extracted_comments", "translator_comments", "references",
+                    "fuzzy", "obsolete", "is_plural", "plural_index"
+                ]
+                df = df[columns]
 
-        # Apply sorting if requested
-        if sort_by:
-            if sort_by not in df.columns:
-                raise ValueError(f"Invalid sort field: {sort_by}")
-            df = df.sort_values(by=sort_by)
+            # Apply sorting if requested
+            if sort_by:
+                if sort_by not in df.columns:
+                    raise ValueError(f"Invalid sort field: {sort_by}")
+                df = df.sort_values(by=sort_by)
 
     # Export to CSV
     if output_file:
         df.to_csv(output_file, index=False, encoding='utf-8')
     else:
         df.to_csv(sys.stdout, index=False, encoding='utf-8')
+
+
+def _export_violations_csv(violations: List, multi_file: bool) -> pd.DataFrame:
+    """Export violations to a DataFrame.
+
+    Args:
+        violations: List of Violation objects
+        multi_file: Whether to include source_file column
+
+    Returns:
+        DataFrame with violation data
+    """
+    if not violations:
+        # Empty violations - return empty DataFrame with headers
+        if multi_file:
+            columns = [
+                "source_file", "msgid", "msgstr", "msgctxt",
+                "extracted_comments", "translator_comments", "references",
+                "fuzzy", "obsolete", "is_plural", "plural_index",
+                "severity", "check", "message"
+            ]
+        else:
+            columns = [
+                "msgid", "msgstr", "msgctxt",
+                "extracted_comments", "translator_comments", "references",
+                "fuzzy", "obsolete", "is_plural", "plural_index",
+                "severity", "check", "message"
+            ]
+        return pd.DataFrame(columns=columns)
+
+    # Convert violations to rows
+    data = []
+    for violation in violations:
+        entry = violation.entry
+        row = {
+            "msgid": entry.msgid,
+            "msgstr": entry.msgstr,
+            "msgctxt": entry.msgctxt if entry.msgctxt is not None else "",
+            "extracted_comments": entry.extracted_comments,
+            "translator_comments": entry.translator_comments,
+            "references": entry.references,
+            "fuzzy": entry.fuzzy,
+            "obsolete": entry.obsolete,
+            "is_plural": entry.is_plural,
+            "plural_index": entry.plural_index if entry.plural_index is not None else "",
+            "severity": violation.severity.value,
+            "check": violation.check_name,
+            "message": violation.message,
+        }
+        if multi_file:
+            row["source_file"] = entry.source_file or ""
+        data.append(row)
+
+    df = pd.DataFrame(data)
+
+    # Reorder columns
+    if multi_file:
+        columns = [
+            "source_file", "msgid", "msgstr", "msgctxt",
+            "extracted_comments", "translator_comments", "references",
+            "fuzzy", "obsolete", "is_plural", "plural_index",
+            "severity", "check", "message"
+        ]
+    else:
+        columns = [
+            "msgid", "msgstr", "msgctxt",
+            "extracted_comments", "translator_comments", "references",
+            "fuzzy", "obsolete", "is_plural", "plural_index",
+            "severity", "check", "message"
+        ]
+
+    return df[columns]

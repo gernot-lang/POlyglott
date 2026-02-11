@@ -1,0 +1,5 @@
+language: de
+terms:
+  file: Datei
+  folder: Ordner
+  pipeline: Pipeline
