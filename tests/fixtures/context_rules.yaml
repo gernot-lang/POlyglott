@@ -1,0 +1,18 @@
+rules:
+  - pattern: "tables.py"
+    context: column_header
+
+  - pattern: "forms.py"
+    context: form_label
+
+  - pattern: "models.py"
+    context: field_label
+
+  - pattern: "views.py"
+    context: message
+
+  - pattern: "management/commands/"
+    context: log_message
+
+  - pattern: "sidebar"
+    context: navigation

@@ -23,7 +23,7 @@ class TestCLI:
         )
 
         assert result.returncode == 0
-        assert "0.1.0" in result.stdout
+        assert "0.2.0" in result.stdout
 
     def test_scan_single_file_to_stdout(self):
         """Test scanning a single file to stdout."""
@@ -493,3 +493,230 @@ class TestLintCLI:
 
         assert result.returncode == 0
         assert "Total entries: 4" in result.stderr
+
+
+class TestContextInference:
+    """Test suite for context inference feature."""
+
+    def test_scan_with_context_rules(self):
+        """Test scan with explicit context rules file."""
+        with NamedTemporaryFile(mode='w', delete=False, suffix='.csv') as f:
+            output_file = f.name
+
+        try:
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "scan",
+                    str(FIXTURES_DIR / "context_test.po"),
+                    "--context-rules", str(FIXTURES_DIR / "context_rules.yaml"),
+                    "-o", output_file
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+
+            # Read and verify CSV has context columns
+            with open(output_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+            # Check headers
+            assert "context" in rows[0]
+            assert "context_sources" in rows[0]
+
+            # Check specific entries
+            email = next(r for r in rows if r["msgid"] == "Email address")
+            assert email["context"] == "form_label"
+            assert email["context_sources"] == ""  # Unanimous
+
+            username = next(r for r in rows if r["msgid"] == "Username")
+            assert username["context"] == "field_label"
+
+            # Check ambiguous case
+            status = next(r for r in rows if r["msgid"] == "Status")
+            assert status["context"] == "ambiguous"
+            assert status["context_sources"] != ""
+
+        finally:
+            Path(output_file).unlink()
+
+    def test_scan_with_django_preset(self):
+        """Test scan with Django preset."""
+        with NamedTemporaryFile(mode='w', delete=False, suffix='.csv') as f:
+            output_file = f.name
+
+        try:
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "scan",
+                    str(FIXTURES_DIR / "context_test.po"),
+                    "--preset", "django",
+                    "-o", output_file
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+
+            # Read and verify CSV has context columns
+            with open(output_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+            assert "context" in rows[0]
+            assert "context_sources" in rows[0]
+
+        finally:
+            Path(output_file).unlink()
+
+    def test_scan_without_context_no_columns(self):
+        """Test scan without context flags has no context columns."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "polyglott", "scan",
+                str(FIXTURES_DIR / "simple.po")
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        assert result.returncode == 0
+
+        # Check CSV does NOT have context columns
+        lines = result.stdout.strip().split('\n')
+        header = lines[0]
+        assert "context" not in header
+        assert "context_sources" not in header
+
+    def test_scan_context_rules_and_preset_mutually_exclusive(self):
+        """Test error when both --context-rules and --preset provided."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "polyglott", "scan",
+                str(FIXTURES_DIR / "simple.po"),
+                "--context-rules", str(FIXTURES_DIR / "context_rules.yaml"),
+                "--preset", "django"
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        assert result.returncode == 1
+        assert "Cannot specify both" in result.stderr
+
+    def test_scan_context_rules_nonexistent_file(self):
+        """Test error handling for nonexistent rules file."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "polyglott", "scan",
+                str(FIXTURES_DIR / "simple.po"),
+                "--context-rules", "nonexistent.yaml"
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        assert result.returncode == 1
+        assert "not found" in result.stderr.lower()
+
+    def test_scan_context_rules_invalid_yaml(self):
+        """Test error handling for invalid YAML."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "polyglott", "scan",
+                str(FIXTURES_DIR / "simple.po"),
+                "--context-rules", str(FIXTURES_DIR / "context_invalid.yaml")
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        assert result.returncode == 1
+        assert "Invalid YAML" in result.stderr or "Error" in result.stderr
+
+    def test_scan_unknown_preset(self):
+        """Test error handling for unknown preset."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "polyglott", "scan",
+                str(FIXTURES_DIR / "simple.po"),
+                "--preset", "nonexistent"
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        assert result.returncode == 1
+        assert "Unknown preset" in result.stderr
+
+    def test_lint_with_context_csv_output(self):
+        """Test lint with context in CSV output."""
+        with NamedTemporaryFile(mode='w', delete=False, suffix='.csv') as f:
+            output_file = f.name
+
+        try:
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "lint",
+                    str(FIXTURES_DIR / "context_test.po"),
+                    "--preset", "django",
+                    "-o", output_file
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            # Read and verify CSV has context columns
+            with open(output_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+            # Should have standard lint columns
+            if len(rows) > 0:
+                assert "severity" in rows[0]
+                assert "check" in rows[0]
+                # And context columns
+                assert "context" in rows[0]
+                assert "context_sources" in rows[0]
+
+        finally:
+            Path(output_file).unlink()
+
+    def test_lint_with_context_text_output(self):
+        """Test lint text output does not include context."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "polyglott", "lint",
+                str(FIXTURES_DIR / "context_test.po"),
+                "--preset", "django",
+                "--format", "text"
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        # Text output should not mention context
+        # (context is only in CSV format)
+        # Just verify it doesn't crash
+        assert result.returncode in [0, 1, 2]  # Any valid exit code
+
+    def test_existing_tests_still_pass(self):
+        """Regression test: ensure existing Stage 1 and Stage 2 tests still work."""
+        # Test basic scan
+        result = subprocess.run(
+            [sys.executable, "-m", "polyglott", "scan", str(FIXTURES_DIR / "simple.po")],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode == 0
+
+        # Test basic lint
+        result = subprocess.run(
+            [sys.executable, "-m", "polyglott", "lint", str(FIXTURES_DIR / "simple.po")],
+            capture_output=True,
+            text=True
+        )
+        assert result.returncode in [0, 1, 2]

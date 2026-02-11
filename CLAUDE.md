@@ -24,6 +24,17 @@ pytest -v           # Verbose output
 pytest tests/test_parser.py  # Specific file
 ```
 
+### Version Bumping
+
+Use the venv's bump-my-version (not system Python):
+
+```bash
+.venv/bin/bump-my-version bump minor  # 0.1.0 → 0.2.0
+.venv/bin/bump-my-version bump patch  # 0.1.0 → 0.1.1
+```
+
+**Important:** Configuration uses `[tool.bumpversion]` (not `[tool.bump-my-version]`) in pyproject.toml.
+
 ### CLI
 
 ```bash
