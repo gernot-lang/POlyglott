@@ -69,6 +69,12 @@ class Glossary:
         if not data['terms']:
             raise ValueError("Glossary 'terms' section is empty")
 
+        if not isinstance(data['terms'], dict):
+            raise ValueError(
+                "Glossary 'terms' must be a dictionary (e.g., 'file: Datei'), "
+                "not a list. Check your YAML format."
+            )
+
         self.language = data.get('language', 'unknown')
         self.terms = data['terms']
 
