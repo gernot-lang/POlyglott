@@ -10,6 +10,7 @@ import pytest
 
 from polyglott.parser import POEntryData
 from polyglott.exporter import export_to_csv
+from polyglott.linter import Severity, Violation
 
 
 class TestExporter:
@@ -236,3 +237,200 @@ class TestExporter:
 
         with pytest.raises(ValueError, match="Invalid sort field"):
             export_to_csv(entries, sort_by="nonexistent_field")
+
+
+class TestLintMode:
+    """Test suite for lint mode CSV export."""
+
+    def test_lint_mode_schema(self):
+        """Test CSV schema for lint mode."""
+        entry = POEntryData(
+            msgid="Test",
+            msgstr="",
+            msgctxt=None,
+            extracted_comments="",
+            translator_comments="",
+            references="file.py:10",
+            fuzzy=False,
+            obsolete=False,
+            is_plural=False,
+            plural_index=None,
+            source_file=None
+        )
+
+        violation = Violation(
+            entry=entry,
+            severity=Severity.ERROR,
+            check_name="untranslated",
+            message="Entry is not translated"
+        )
+
+        output = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = output
+        export_to_csv([], lint_mode=True, violations=[violation])
+        sys.stdout = old_stdout
+
+        output.seek(0)
+        reader = csv.DictReader(output)
+        rows = list(reader)
+
+        # Check schema includes lint columns
+        columns = list(rows[0].keys())
+        assert "severity" in columns
+        assert "check" in columns
+        assert "message" in columns
+
+        # Check data
+        assert rows[0]["msgid"] == "Test"
+        assert rows[0]["severity"] == "error"
+        assert rows[0]["check"] == "untranslated"
+        assert rows[0]["message"] == "Entry is not translated"
+
+    def test_lint_mode_multi_file_schema(self):
+        """Test CSV schema for lint mode with multi-file."""
+        entry = POEntryData(
+            msgid="Test",
+            msgstr="",
+            msgctxt=None,
+            extracted_comments="",
+            translator_comments="",
+            references="",
+            fuzzy=False,
+            obsolete=False,
+            is_plural=False,
+            plural_index=None,
+            source_file="test.po"
+        )
+
+        violation = Violation(
+            entry=entry,
+            severity=Severity.WARNING,
+            check_name="fuzzy",
+            message="Entry is marked as fuzzy"
+        )
+
+        output = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = output
+        export_to_csv([], lint_mode=True, violations=[violation], multi_file=True)
+        sys.stdout = old_stdout
+
+        output.seek(0)
+        reader = csv.DictReader(output)
+        rows = list(reader)
+
+        # Check source_file is first column
+        columns = list(rows[0].keys())
+        assert columns[0] == "source_file"
+        assert rows[0]["source_file"] == "test.po"
+
+    def test_lint_mode_multiple_violations(self):
+        """Test lint mode with multiple violations."""
+        entry1 = POEntryData(
+            msgid="Test1",
+            msgstr="",
+            msgctxt=None,
+            extracted_comments="",
+            translator_comments="",
+            references="",
+            fuzzy=False,
+            obsolete=False,
+            is_plural=False,
+            plural_index=None,
+            source_file=None
+        )
+
+        entry2 = POEntryData(
+            msgid="Test2",
+            msgstr="Test",
+            msgctxt=None,
+            extracted_comments="",
+            translator_comments="",
+            references="",
+            fuzzy=True,
+            obsolete=False,
+            is_plural=False,
+            plural_index=None,
+            source_file=None
+        )
+
+        violations = [
+            Violation(entry1, Severity.ERROR, "untranslated", "Entry is not translated"),
+            Violation(entry2, Severity.WARNING, "fuzzy", "Entry is marked as fuzzy"),
+        ]
+
+        output = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = output
+        export_to_csv([], lint_mode=True, violations=violations)
+        sys.stdout = old_stdout
+
+        output.seek(0)
+        reader = csv.DictReader(output)
+        rows = list(reader)
+
+        # Should have two rows (one per violation)
+        assert len(rows) == 2
+        assert rows[0]["severity"] == "error"
+        assert rows[1]["severity"] == "warning"
+
+    def test_lint_mode_empty_violations(self):
+        """Test lint mode with no violations."""
+        output = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = output
+        export_to_csv([], lint_mode=True, violations=[])
+        sys.stdout = old_stdout
+
+        output.seek(0)
+        content = output.read()
+
+        # Should have headers but no data rows
+        lines = content.strip().split('\n')
+        assert len(lines) == 1  # Header only
+        assert "severity" in lines[0]
+        assert "check" in lines[0]
+        assert "message" in lines[0]
+
+    def test_lint_mode_without_violations_raises_error(self):
+        """Test that lint mode requires violations parameter."""
+        with pytest.raises(ValueError, match="violations required"):
+            export_to_csv([], lint_mode=True)
+
+    def test_lint_mode_all_severity_levels(self):
+        """Test lint mode with all severity levels."""
+        entry = POEntryData(
+            msgid="Test",
+            msgstr="",
+            msgctxt=None,
+            extracted_comments="",
+            translator_comments="",
+            references="",
+            fuzzy=False,
+            obsolete=False,
+            is_plural=False,
+            plural_index=None,
+            source_file=None
+        )
+
+        violations = [
+            Violation(entry, Severity.ERROR, "error_check", "Error"),
+            Violation(entry, Severity.WARNING, "warning_check", "Warning"),
+            Violation(entry, Severity.INFO, "info_check", "Info"),
+        ]
+
+        output = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = output
+        export_to_csv([], lint_mode=True, violations=violations)
+        sys.stdout = old_stdout
+
+        output.seek(0)
+        reader = csv.DictReader(output)
+        rows = list(reader)
+
+        assert len(rows) == 3
+        assert rows[0]["severity"] == "error"
+        assert rows[1]["severity"] == "warning"
+        assert rows[2]["severity"] == "info"

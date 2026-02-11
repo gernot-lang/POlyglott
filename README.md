@@ -6,6 +6,8 @@ A tool for parsing gettext PO files and exporting them to CSV for translation wo
 
 - **PO File Parsing**: Extract all metadata from gettext PO files using polib
 - **CSV Export**: Convert PO entries to CSV format with pandas
+- **Quality Linting**: Check translations for common issues (untranslated, fuzzy, format mismatches)
+- **Glossary Support**: Enforce translation consistency with YAML glossary files
 - **Multi-file Support**: Process multiple PO files with glob patterns
 - **Unicode Support**: Full support for international characters, emoji, and multi-byte scripts
 - **Flexible Sorting**: Sort output by any field (msgid, msgstr, fuzzy status, etc.)
@@ -29,10 +31,11 @@ pip install -e ".[dev]"
 - Python 3.10 or higher
 - polib >= 1.2.0
 - pandas >= 2.0.0
+- pyyaml >= 6.0
 
 ## Usage
 
-### Basic Usage
+### Scan Command
 
 Scan a single PO file and output to stdout:
 
@@ -46,7 +49,7 @@ Save output to a CSV file:
 polyglott scan messages.po -o output.csv
 ```
 
-### Multi-file Processing
+#### Multi-file Processing
 
 Process multiple PO files using glob patterns:
 
@@ -60,7 +63,7 @@ Exclude specific files:
 polyglott scan --include "**/*.po" --exclude "tests/**/*.po" -o output.csv
 ```
 
-### Sorting
+#### Sorting
 
 Sort output by field:
 
@@ -70,26 +73,100 @@ polyglott scan messages.po --sort-by msgid -o sorted.csv
 
 Available sort fields: `msgid`, `msgstr`, `source_file`, `fuzzy`
 
+### Lint Command
+
+Check translation quality with built-in validators:
+
+```bash
+polyglott lint messages.po
+```
+
+#### Text Output
+
+Human-readable text format for terminal:
+
+```bash
+polyglott lint messages.po --format text
+```
+
+#### Glossary Checking
+
+Enforce term consistency with a glossary file:
+
+```bash
+polyglott lint messages.po --glossary glossary.yaml
+```
+
+**Glossary Format (YAML):**
+
+```yaml
+language: de
+terms:
+  file: Datei
+  folder: Ordner
+  pipeline: Pipeline
+```
+
+#### Built-in Checks
+
+- **untranslated** (error): Entry has no translation
+- **fuzzy** (warning): Entry is marked as fuzzy
+- **format_mismatch** (error): Format placeholders don't match (e.g., `%(name)s`, `{count}`)
+- **term_mismatch** (warning): Translation doesn't use glossary term
+- **obsolete** (info): Entry is marked as obsolete
+
+#### Filtering
+
+Filter by severity level:
+
+```bash
+polyglott lint messages.po --severity error  # Only errors
+```
+
+Include/exclude specific checks:
+
+```bash
+polyglott lint messages.po --check untranslated --check fuzzy
+polyglott lint messages.po --no-check obsolete
+```
+
+#### Exit Codes
+
+- `0`: No issues found
+- `1`: Errors found
+- `2`: Warnings found (no errors)
+
+Perfect for CI/CD pipelines:
+
+```bash
+polyglott lint locales/de.po || exit 1
+```
+
 ### Examples
 
-**Single file with sorting:**
+**Scan single file with sorting:**
 ```bash
 polyglott scan de.po --sort-by msgid -o german.csv
 ```
 
-**Multiple languages with statistics:**
+**Scan multiple languages:**
 ```bash
 polyglott scan --include "locales/*/LC_MESSAGES/*.po" -o all_translations.csv
 ```
 
-**Exclude test files:**
+**Lint with glossary in CI:**
 ```bash
-polyglott scan --include "**/*.po" --exclude "tests/*.po" --exclude "vendor/*.po"
+polyglott lint locales/de.po --glossary glossaries/de.yaml --severity warning
+```
+
+**Lint all files with text output:**
+```bash
+polyglott lint --include "**/*.po" --exclude "vendor/*.po" --format text
 ```
 
 ## Output Format
 
-### CSV Columns (Single File)
+### Scan CSV Columns
 
 - `msgid`: Original message string
 - `msgstr`: Translated string
@@ -102,9 +179,27 @@ polyglott scan --include "**/*.po" --exclude "tests/*.po" --exclude "vendor/*.po
 - `is_plural`: Plural form flag (True/False)
 - `plural_index`: Plural form index (0, 1, 2, ...)
 
-### CSV Columns (Multi-file)
+Multi-file mode adds `source_file` as the first column.
 
-Multi-file mode adds `source_file` as the first column to track which PO file each entry came from.
+### Lint CSV Columns
+
+Lint mode adds three additional columns:
+
+- `severity`: error, warning, or info
+- `check`: Name of the check that failed
+- `message`: Description of the issue
+
+### Lint Text Format
+
+```
+format_issues.po:
+-----------------
+  ERROR   line 15    format_mismatch      Format placeholder mismatch (missing: %(value)s)
+  ERROR   line 20    format_mismatch      Format placeholder mismatch (extra: %(extra)s)
+
+------------------------------------------------------------
+2 errors — 2 issues in 1 file
+```
 
 ## Statistics
 
@@ -122,10 +217,11 @@ Statistics:
 ## Use Cases
 
 - **Translation Management**: Export PO files to CSV for review in spreadsheet tools
+- **Quality Assurance**: Lint translations for common issues before deployment
+- **CI/CD Integration**: Enforce translation quality in automated pipelines
+- **Glossary Enforcement**: Ensure consistent terminology across translations
 - **Progress Tracking**: Monitor translation completion across multiple languages
-- **Quality Assurance**: Identify untranslated and fuzzy entries
 - **Data Analysis**: Analyze translation patterns with pandas or Excel
-- **Workflow Integration**: Pipe CSV output to other tools for processing
 
 ## Development
 
@@ -145,14 +241,17 @@ src/polyglott/
 ├── __main__.py      # Support for python -m polyglott
 ├── cli.py           # CLI entry point (argparse)
 ├── parser.py        # PO file parsing (polib)
-└── exporter.py      # CSV export (pandas)
+├── exporter.py      # CSV export (pandas)
+├── linter.py        # Quality checks and glossary
+└── formatter.py     # Text output formatting
 ```
 
 ## Roadmap
 
-POlyglott is under active development. Planned features:
+POlyglott is under active development:
 
-- **Stage 2 (v0.2.0)**: Lint subcommand with glossary support
+- **Stage 1 (v0.1.0)**: ✅ PO scanning and CSV export
+- **Stage 2 (v0.2.0)**: ✅ Lint subcommand with glossary support
 - **Stage 3 (v0.3.0)**: Context inference from source code references
 - **Stage 4 (v0.4.0)**: Translation master CSV for multi-language management
 - **Stage 5 (v0.5.0)**: DeepL integration for machine translation
@@ -178,4 +277,5 @@ MIT License - see [LICENSE.md](LICENSE.md) for details.
 Built with:
 - [polib](https://pypi.org/project/polib/) - PO file parsing
 - [pandas](https://pandas.pydata.org/) - Data manipulation and CSV export
+- [pyyaml](https://pyyaml.org/) - Glossary file parsing
 - [pytest](https://pytest.org/) - Testing framework

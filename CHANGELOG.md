@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-02-11
+
+### Added
+- `lint` subcommand for translation quality checks with configurable severity levels
+- Built-in quality checks: untranslated, fuzzy, obsolete, format_mismatch
+- Format placeholder validation for both percent-style (%(name)s) and brace-style ({name}) formats
+- YAML glossary support for enforcing translation consistency
+- Word-boundary term matching to prevent false positives
+- Text output format for human-readable lint results
+- CSV lint output with severity, check name, and message columns
+- Severity filtering (--severity error/warning/info)
+- Check filtering (--check/--no-check for including/excluding specific checks)
+- Exit codes for CI/CD integration (0=clean, 1=errors, 2=warnings)
+- Comprehensive test suite for linter, formatter, and glossary (68 additional tests)
+
 ## [0.1.0] - 2026-02-11
 
 ### Added
@@ -21,4 +36,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suite (34 tests covering parser, exporter, and CLI)
 
 [Unreleased]: #
+[0.2.0]: #
 [0.1.0]: #
