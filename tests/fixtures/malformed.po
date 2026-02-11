@@ -1,0 +1,7 @@
+# Malformed PO file for error testing
+msgid ""
+msgstr ""
+
+This is not valid PO syntax
+msgid without quotes
+msgstr
