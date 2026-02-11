@@ -246,3 +246,12 @@ Add entries under `[0.3.0]` section.
 - Backward compatible — all existing CLI usage works identically without context flags
 - Follow existing code style and patterns from Stages 1–2
 - Run full test suite before considering complete — all existing tests must pass
+
+## Development Notes
+
+- Use venv tools: `.venv/bin/pytest`, `.venv/bin/bump-my-version`
+- All 102+ existing tests must continue to pass (regression check)
+- Create test fixtures in `tests/fixtures/` with descriptive names
+- Follow the git workflow in CLAUDE.md (feature branch → develop → main → tag)
+- Update both README.md and CHANGELOG.md before completing the stage
+- Version bumping: `.venv/bin/bump-my-version bump minor` on develop branch
