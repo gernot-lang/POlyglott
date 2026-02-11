@@ -17,7 +17,7 @@ A tool for parsing gettext PO files and exporting them to CSV for translation wo
 ### From Source
 
 ```bash
-git clone https://github.com/yourusername/polyglott.git
+git clone <repository-url>
 cd polyglott
 python -m venv .venv
 source .venv/bin/activate

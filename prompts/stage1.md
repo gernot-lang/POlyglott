@@ -358,7 +358,7 @@ See `CLAUDE.md` for the full workflow. For this stage:
 
 ## Constraints
 
-- No dependencies beyond `polib`, `pandas`, `pyyaml` (runtime) and `pytest`, `bump-my-version` (dev)
+- No dependencies beyond `polib`, `pandas` (runtime) and `pytest`, `bump-my-version` (dev)
 - Python 3.10+
 - Generic OSS tool — no company-specific references
 - All tests must pass before considering Stage 1 complete
