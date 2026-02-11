@@ -157,36 +157,51 @@ def _export_violations_csv(
 
     # Convert violations to rows
     data = []
-    for violation in violations:
+    for i, violation in enumerate(violations):
         entry = violation.entry
-        row = {
-            "msgid": entry.msgid,
-            "msgstr": entry.msgstr,
-            "msgctxt": entry.msgctxt if entry.msgctxt is not None else "",
-            "extracted_comments": entry.extracted_comments,
-            "translator_comments": entry.translator_comments,
-            "references": entry.references,
-            "fuzzy": entry.fuzzy,
-            "obsolete": entry.obsolete,
-            "is_plural": entry.is_plural,
-            "plural_index": entry.plural_index if entry.plural_index is not None else "",
-            "severity": violation.severity.value,
-            "check": violation.check_name,
-            "message": violation.message,
-        }
-        if multi_file:
-            row["source_file"] = entry.source_file or ""
+        try:
+            row = {
+                "msgid": entry.msgid,
+                "msgstr": entry.msgstr,
+                "msgctxt": entry.msgctxt if entry.msgctxt is not None else "",
+                "extracted_comments": entry.extracted_comments,
+                "translator_comments": entry.translator_comments,
+                "references": entry.references,
+                "fuzzy": entry.fuzzy,
+                "obsolete": entry.obsolete,
+                "is_plural": entry.is_plural,
+                "plural_index": entry.plural_index if entry.plural_index is not None else "",
+                "severity": violation.severity.value,
+                "check": violation.check_name,
+                "message": violation.message,
+            }
+            if multi_file:
+                row["source_file"] = entry.source_file or ""
 
-        # Add context columns if context_data is provided
-        if context_data is not None:
-            entry_key = (entry.msgid, entry.msgctxt, entry.plural_index)
-            context, context_sources = context_data.get(entry_key, ('', ''))
-            row["context"] = context
-            row["context_sources"] = context_sources
+            # Add context columns if context_data is provided
+            if context_data is not None:
+                entry_key = (entry.msgid, entry.msgctxt, entry.plural_index)
+                context, context_sources = context_data.get(entry_key, ('', ''))
+                row["context"] = context
+                row["context_sources"] = context_sources
 
-        data.append(row)
+            data.append(row)
+        except AttributeError as e:
+            # Better error message for debugging
+            raise ValueError(
+                f"Error processing violation {i} (msgid: {getattr(entry, 'msgid', 'unknown')}): {e}. "
+                f"Check if entry fields have unexpected types (e.g., lists instead of strings)."
+            ) from e
 
-    df = pd.DataFrame(data)
+    try:
+        df = pd.DataFrame(data)
+    except Exception as e:
+        # Provide helpful error for DataFrame creation issues
+        raise ValueError(
+            f"Error creating DataFrame from violations: {e}. "
+            f"This may indicate unexpected data types in violation entries. "
+            f"Total violations: {len(violations)}, data rows: {len(data)}"
+        ) from e
 
     # Reorder columns
     if multi_file:
