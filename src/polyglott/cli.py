@@ -15,8 +15,8 @@ from polyglott.formatter import format_text_output
 
 
 def discover_po_files(
-    include_patterns: List[str],
-    exclude_patterns: Optional[List[str]] = None
+        include_patterns: List[str],
+        exclude_patterns: Optional[List[str]] = None
 ) -> List[str]:
     """Discover PO files using glob patterns.
 

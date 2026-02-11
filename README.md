@@ -145,21 +145,25 @@ polyglott lint locales/de.po || exit 1
 ### Examples
 
 **Scan single file with sorting:**
+
 ```bash
 polyglott scan de.po --sort-by msgid -o german.csv
 ```
 
 **Scan multiple languages:**
+
 ```bash
 polyglott scan --include "locales/*/LC_MESSAGES/*.po" -o all_translations.csv
 ```
 
 **Lint with glossary in CI:**
+
 ```bash
 polyglott lint locales/de.po --glossary glossaries/de.yaml --severity warning
 ```
 
 **Lint all files with text output:**
+
 ```bash
 polyglott lint --include "**/*.po" --exclude "vendor/*.po" --format text
 ```
@@ -275,6 +279,7 @@ MIT License - see [LICENSE.md](LICENSE.md) for details.
 ## Acknowledgments
 
 Built with:
+
 - [polib](https://pypi.org/project/polib/) - PO file parsing
 - [pandas](https://pandas.pydata.org/) - Data manipulation and CSV export
 - [pyyaml](https://pyyaml.org/) - Glossary file parsing

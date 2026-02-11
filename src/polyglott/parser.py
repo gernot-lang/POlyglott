@@ -79,10 +79,10 @@ class POParser:
         return entries
 
     def _process_entry(
-        self,
-        entry: polib.POEntry,
-        source_file: Optional[str] = None,
-        obsolete: bool = False
+            self,
+            entry: polib.POEntry,
+            source_file: Optional[str] = None,
+            obsolete: bool = False
     ) -> List[POEntryData]:
         """Process a single PO entry, handling plurals.
 

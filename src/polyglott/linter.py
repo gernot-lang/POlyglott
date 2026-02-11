@@ -138,6 +138,7 @@ class CheckRegistry:
         Returns:
             Decorator function
         """
+
         def decorator(func: Callable) -> Callable:
             self._checks[name] = {
                 'function': func,
@@ -145,6 +146,7 @@ class CheckRegistry:
                 'name': name
             }
             return func
+
         return decorator
 
     def get_check(self, name: str) -> Optional[Dict]:

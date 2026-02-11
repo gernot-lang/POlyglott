@@ -8,9 +8,9 @@ version = "0.2.0"
 description = "A tool for parsing gettext PO files and exporting them to CSV for translation workflow management"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
+license = { text = "MIT" }
 authors = [
-    {name = "POlyglott Contributors"}
+    { name = "POlyglott Contributors" }
 ]
 keywords = ["gettext", "po", "translation", "i18n", "csv"]
 classifiers = [
