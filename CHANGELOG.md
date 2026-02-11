@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-02-11
+
+### Fixed
+
+- Glossary validation now properly checks that `terms` is a dictionary, not a list
+- Clear error message when glossary uses incorrect list format (e.g., `- source: file`)
+- Prevents cryptic "'list' object has no attribute 'items'" error during lint
+
+## [0.3.1] - 2026-02-11
+
+### Added
+
+- Better error handling in CSV export with descriptive messages for DataFrame creation issues
+- Row-level error tracking to identify problematic entries during export
+
 ## [0.3.0] - 2026-02-11
 
 ### Added
@@ -53,6 +68,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suite (34 tests covering parser, exporter, and CLI)
 
 [Unreleased]: #
+
+[0.3.2]: #
+
+[0.3.1]: #
 
 [0.3.0]: #
 
