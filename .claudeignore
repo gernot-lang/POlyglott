@@ -1,0 +1,17 @@
+# Build artifacts
+.venv/
+dist/
+build/
+*.egg-info/
+__pycache__/
+
+# Test output
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Prevent contamination from company-specific projects
+**/GRAPE/**
+**/grape/**
+**/Softwerk/**
+**/softwerk/**
