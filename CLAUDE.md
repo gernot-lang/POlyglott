@@ -102,13 +102,19 @@ git commit -m "docs: update CHANGELOG for vX.Y.0"
 git checkout main
 git merge --no-ff develop
 
-# 7. Create annotated tag on main
+# 7. VERIFY you're on main before tagging
+git branch --show-current  # MUST show "main"
+
+# 8. Create annotated tag on main
 git tag -a vX.Y.0 -m "Short description of what this release delivers"
 
-# 8. Push everything
+# VERIFY THE TAG:
+git show vX.Y.0 --no-patch --format="%d %s"
+
+# 9. Push everything
 git push origin main develop --tags
 
-# 9. Delete feature branch
+# 10. Delete feature branch
 git branch -d feature/feature-name
 ```
 
@@ -116,7 +122,14 @@ git branch -d feature/feature-name
 
 Manual testing happens after tagging a release on `main`. If bugs or deficiencies are found:
 
-**CRITICAL: Follow Test-Driven Development (TDD) for all bugfixes:**
+**⚠️ CRITICAL REQUIREMENTS:**
+
+1. **Always verify current branch before tagging**
+   - Tags MUST be on main, on the version bump commit
+   - Use `git branch --show-current` before EVERY tag operation
+   - NEVER tag while on a feature/fix branch
+
+2. **Follow Test-Driven Development (TDD) for all bugfixes:**
 1. Write a failing test that reproduces the bug
 2. Verify the test fails with the exact error
 3. Fix the code
@@ -165,18 +178,25 @@ git merge --no-ff fix/description
 # 9. Bump patch version on main
 .venv/bin/bump-my-version bump patch
 
-# 10. Tag with descriptive message
+# 10. CRITICAL: Verify you're on main and tag the version bump commit
+git branch --show-current  # MUST show "main"
+git log --oneline -1       # MUST show "chore: bump version X.Y.Z → X.Y.Z+1"
+
+# 11. Tag with descriptive message (ONLY after verification above)
 git tag -a v0.X.Y -m "Fix description (concise)"
 
-# 11. Update version test (if exists)
+# VERIFY THE TAG IS CORRECT:
+git show v0.X.Y --no-patch --format="%d %s"  # Should show the version bump commit
+
+# 13. Update version test (if exists)
 # Edit tests/test_cli.py version check to match new version
 git add tests/test_cli.py
 git commit -m "test: update version check to 0.X.Y"
 
-# 12. Push everything
+# 14. Push everything
 git push origin main develop --tags
 
-# 13. Clean up
+# 15. Clean up
 git branch -d fix/description
 ```
 
