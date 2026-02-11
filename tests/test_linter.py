@@ -267,6 +267,23 @@ class TestGlossary:
         with pytest.raises(ValueError, match="'terms' section is empty"):
             Glossary(str(glossary_file))
 
+    def test_load_terms_as_list(self, tmp_path):
+        """Test loading glossary with terms as list instead of dict.
+
+        This reproduces the bug: 'list' object has no attribute 'items'
+        """
+        glossary_file = tmp_path / "list_terms.yaml"
+        glossary_file.write_text("""language: de
+terms:
+  - source: file
+    target: Datei
+  - source: folder
+    target: Ordner
+""")
+
+        with pytest.raises(ValueError, match="must be a dictionary"):
+            Glossary(str(glossary_file))
+
     def test_check_term_match(self, tmp_path):
         """Test glossary term checking with correct term."""
         glossary_file = tmp_path / "glossary.yaml"
