@@ -40,11 +40,11 @@ POlyglott/
 ├── CLAUDE.md                  # Already exists — do not recreate
 ├── AI_DEVELOPMENT.md          # Already exists — do not recreate
 ├── prompts/                   # Already exists — do not modify
-│   ├── Stage1.md
-│   ├── Stage2.md
-│   ├── Stage3.md
-│   ├── Stage4.md
-│   └── Stage5.md
+│   ├── stage1.md
+│   ├── stage2.md
+│   ├── stage3.md
+│   ├── stage4.md
+│   └── stage5.md
 ├── src/
 │   └── polyglott/
 │       ├── __init__.py        # __version__ = "0.1.0"
