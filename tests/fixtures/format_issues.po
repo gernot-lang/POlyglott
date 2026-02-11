@@ -1,0 +1,32 @@
+# Test file for format placeholder mismatches
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+#: file1.py:10
+msgid "Hello %(name)s, you have %(count)d messages"
+msgstr "Bonjour %(name)s, vous avez %(count)d messages"
+
+#: file1.py:15
+msgid "Missing placeholder %(value)s"
+msgstr "Placeholder manquant"
+
+#: file1.py:20
+msgid "Extra placeholder test"
+msgstr "Test avec %(extra)s placeholder"
+
+#: file1.py:25
+msgid "Brace format {0} and {name}"
+msgstr "Format accolade {0} et {name}"
+
+#: file1.py:30
+msgid "Missing brace {value}"
+msgstr "Manquant accolade"
+
+#: file1.py:35
+msgid "Mixed %(percent)s and {brace}"
+msgstr "Mixte %(percent)s et {brace}"
+
+#: file1.py:40
+msgid "Correct format %(test)s"
+msgstr "Format correct %(test)s"

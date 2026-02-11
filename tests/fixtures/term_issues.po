@@ -1,0 +1,36 @@
+# Test file for glossary term mismatches
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+#: file1.py:10
+msgid "Open the file"
+msgstr "Öffnen Sie die Datei"
+
+#: file1.py:15
+msgid "Close the file"
+msgstr "Schließen Sie die Akte"
+
+#: file1.py:20
+msgid "Create a new folder"
+msgstr "Erstellen Sie einen neuen Verzeichnis"
+
+#: file1.py:25
+msgid "Delete the folder"
+msgstr "Löschen Sie den Ordner"
+
+#: file1.py:30
+msgid "Run the pipeline"
+msgstr "Führen Sie die Pipeline aus"
+
+#: file1.py:35
+msgid "Configure pipeline settings"
+msgstr "Konfigurieren Sie Pipeline-Einstellungen"
+
+#: file1.py:40
+msgid "The file is open"
+msgstr "Die Datei ist offen"
+
+#: file1.py:45
+msgid "View user profile"
+msgstr "Benutzerprofil anzeigen"
