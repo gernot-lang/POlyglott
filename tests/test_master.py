@@ -1,0 +1,1280 @@
+"""Tests for master CSV functionality."""
+
+import csv
+import subprocess
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+import pytest
+
+from polyglott.master import (
+    MasterEntry,
+    deduplicate_entries,
+    create_master,
+    merge_master,
+    load_master,
+    save_master,
+    _resolve_msgstr_conflict,
+    _check_glossary_score,
+    _compute_context
+)
+from polyglott.parser import POEntryData, POParser, MultiPOParser
+from polyglott.linter import Glossary
+from polyglott.context import load_context_rules
+
+# Test fixtures directory
+FIXTURES_DIR = Path(__file__).parent / "fixtures" / "master"
+
+
+class TestDeduplication:
+    """Tests for deduplication logic."""
+
+    def test_same_msgid_same_msgstr(self):
+        """Test deduplication when msgstr values match."""
+        entries = [
+            POEntryData(
+                msgid="Hello",
+                msgstr="Hallo",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file1.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="django.po"
+            ),
+            POEntryData(
+                msgid="Hello",
+                msgstr="Hallo",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file2.py:20",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="forms.po"
+            )
+        ]
+
+        result = deduplicate_entries(entries)
+
+        assert len(result) == 1
+        assert "Hello" in result
+        assert result["Hello"].msgstr == "Hallo"
+        # References should be aggregated
+        assert "file1.py:10" in result["Hello"].references
+        assert "file2.py:20" in result["Hello"].references
+
+    def test_same_msgid_different_msgstr_majority(self):
+        """Test majority voting when msgstr values differ."""
+        entries = [
+            POEntryData(
+                msgid="Hello",
+                msgstr="Hallo",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file1.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="file1.po"
+            ),
+            POEntryData(
+                msgid="Hello",
+                msgstr="Hallo",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file2.py:20",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="file2.po"
+            ),
+            POEntryData(
+                msgid="Hello",
+                msgstr="Grüß Gott",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file3.py:30",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="file3.po"
+            )
+        ]
+
+        result = deduplicate_entries(entries)
+
+        assert len(result) == 1
+        assert result["Hello"].msgstr == "Hallo"  # Majority wins
+
+    def test_same_msgid_empty_vs_nonempty(self):
+        """Test that non-empty msgstr beats empty."""
+        entries = [
+            POEntryData(
+                msgid="Hello",
+                msgstr="",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file1.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="file1.po"
+            ),
+            POEntryData(
+                msgid="Hello",
+                msgstr="Hallo",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file2.py:20",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="file2.po"
+            )
+        ]
+
+        result = deduplicate_entries(entries)
+
+        assert len(result) == 1
+        assert result["Hello"].msgstr == "Hallo"
+
+    def test_reference_aggregation(self):
+        """Test that references are properly aggregated and deduplicated."""
+        entries = [
+            POEntryData(
+                msgid="Hello",
+                msgstr="Hallo",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file1.py:10 file2.py:20",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="file1.po"
+            ),
+            POEntryData(
+                msgid="Hello",
+                msgstr="Hallo",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file2.py:20 file3.py:30",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="file2.po"
+            )
+        ]
+
+        result = deduplicate_entries(entries)
+
+        refs = result["Hello"].references.split()
+        # Should have 3 unique references
+        assert len(refs) == 3
+        assert "file1.py:10" in refs
+        assert "file2.py:20" in refs
+        assert "file3.py:30" in refs
+
+    def test_majority_voting_tie(self):
+        """Test tie-breaking: first encountered wins."""
+        entries = [
+            POEntryData(
+                msgid="Hello",
+                msgstr="Hallo",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file1.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="file1.po"
+            ),
+            POEntryData(
+                msgid="Hello",
+                msgstr="Grüß Gott",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file2.py:20",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="file2.po"
+            )
+        ]
+
+        result = deduplicate_entries(entries)
+
+        # First encountered should win (Hallo)
+        assert result["Hello"].msgstr == "Hallo"
+
+
+class TestGlossaryScoring:
+    """Tests for glossary scoring logic."""
+
+    def test_exact_match_scores_10(self):
+        """Test that exact glossary match assigns score 10."""
+        glossary = Glossary(str(FIXTURES_DIR / "glossary_de.yaml"))
+
+        score = _check_glossary_score("Username", "Benutzername", glossary)
+        assert score == "10"
+
+    def test_partial_match_no_score(self):
+        """Test that partial match doesn't assign score."""
+        glossary = Glossary(str(FIXTURES_DIR / "glossary_de.yaml"))
+
+        # msgstr doesn't match glossary term
+        score = _check_glossary_score("Username", "Nutzername", glossary)
+        assert score == ""
+
+    def test_no_glossary_no_score(self):
+        """Test that no glossary means no score."""
+        score = _check_glossary_score("Username", "Benutzername", None)
+        assert score == ""
+
+    def test_case_insensitive_match(self):
+        """Test that glossary matching is case-insensitive."""
+        glossary = Glossary(str(FIXTURES_DIR / "glossary_de.yaml"))
+
+        # Different case but should still match
+        score = _check_glossary_score("username", "benutzername", glossary)
+        assert score == "10"
+
+
+class TestCreateMaster:
+    """Tests for initial master CSV creation."""
+
+    def test_create_from_single_file(self):
+        """Test creating master from a single PO file."""
+        parser = POParser(str(FIXTURES_DIR / "django.po"))
+        entries = parser.parse()
+
+        result = create_master(entries)
+
+        # Should have 6 entries (excluding header)
+        assert len(result) == 6
+
+        # Check entries are sorted by msgid
+        msgids = [e.msgid for e in result]
+        assert msgids == sorted(msgids)
+
+    def test_create_from_multiple_files(self):
+        """Test creating master from multiple PO files with deduplication."""
+        parser = MultiPOParser([
+            str(FIXTURES_DIR / "django.po"),
+            str(FIXTURES_DIR / "forms.po")
+        ])
+        entries = parser.parse()
+
+        result = create_master(entries)
+
+        # Should have deduplicated entries
+        msgids = [e.msgid for e in result]
+        # "Username" and "Password" appear in both files, should be deduplicated
+        assert msgids.count("Username") == 1
+        assert msgids.count("Password") == 1
+
+    def test_status_empty_vs_review(self):
+        """Test that status is 'empty' for untranslated, 'review' for translated."""
+        parser = POParser(str(FIXTURES_DIR / "django.po"))
+        entries = parser.parse()
+
+        result = create_master(entries)
+
+        # Find specific entries
+        invalid_creds = next((e for e in result if e.msgid == "Invalid credentials"), None)
+        username = next((e for e in result if e.msgid == "Username"), None)
+
+        assert invalid_creds is not None
+        assert invalid_creds.status == "empty"
+
+        assert username is not None
+        assert username.status == "review"
+
+    def test_context_populated(self):
+        """Test that context is computed when rules provided."""
+        parser = POParser(str(FIXTURES_DIR / "django.po"))
+        entries = parser.parse()
+
+        context_rules = [
+            {'pattern': 'forms.py', 'context': 'form_label'},
+            {'pattern': 'models.py', 'context': 'field_label'},
+            {'pattern': 'views.py', 'context': 'message'}
+        ]
+
+        result = create_master(entries, None, context_rules)
+
+        # Find specific entries
+        username = next((e for e in result if e.msgid == "Username"), None)
+        login_msg = next((e for e in result if e.msgid == "Login successful"), None)
+
+        assert username is not None
+        assert username.context == "form_label"
+
+        assert login_msg is not None
+        assert login_msg.context == "message"
+
+    def test_sorted_by_msgid(self):
+        """Test that master entries are sorted by msgid."""
+        parser = POParser(str(FIXTURES_DIR / "django.po"))
+        entries = parser.parse()
+
+        result = create_master(entries)
+
+        msgids = [e.msgid for e in result]
+        assert msgids == sorted(msgids)
+
+
+class TestMergeMaster:
+    """Tests for merge workflow with status transitions."""
+
+    def test_merge_accepted_matching(self):
+        """Test accepted entry with matching PO stays unchanged."""
+        existing = {
+            "Username": MasterEntry(
+                msgid="Username",
+                msgstr="Benutzername",
+                status="accepted",
+                score="10",
+                context="form_label",
+                context_sources=""
+            )
+        }
+
+        po_entries = [
+            POEntryData(
+                msgid="Username",
+                msgstr="Benutzername",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="forms.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="django.po"
+            )
+        ]
+
+        result = merge_master(existing, po_entries)
+
+        assert len(result) == 1
+        assert result[0].status == "accepted"
+        assert result[0].msgstr == "Benutzername"
+
+    def test_merge_accepted_divergent_conflict(self):
+        """Test accepted entry with divergent PO becomes conflict."""
+        existing = {
+            "Password": MasterEntry(
+                msgid="Password",
+                msgstr="Passwort",
+                status="accepted",
+                score="10",
+                context="form_label",
+                context_sources=""
+            )
+        }
+
+        po_entries = [
+            POEntryData(
+                msgid="Password",
+                msgstr="Kennwort",  # Different translation
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="forms.py:15",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="forms.po"
+            )
+        ]
+
+        result = merge_master(existing, po_entries)
+
+        assert len(result) == 1
+        assert result[0].status == "conflict"
+        # Existing msgstr preserved
+        assert result[0].msgstr == "Passwort"
+
+    def test_merge_accepted_missing_stale(self):
+        """Test accepted entry missing from PO becomes stale."""
+        existing = {
+            "Old Entry": MasterEntry(
+                msgid="Old Entry",
+                msgstr="Alter Eintrag",
+                status="accepted",
+                score="",
+                context="",
+                context_sources=""
+            )
+        }
+
+        po_entries = []  # Empty, entry not in PO files
+
+        result = merge_master(existing, po_entries)
+
+        assert len(result) == 1
+        assert result[0].status == "stale"
+        assert result[0].msgstr == "Alter Eintrag"
+
+    def test_merge_rejected_present(self):
+        """Test rejected entry present in PO stays rejected."""
+        existing = {
+            "Bad Translation": MasterEntry(
+                msgid="Bad Translation",
+                msgstr="Schlechte Übersetzung",
+                status="rejected",
+                score="",
+                context="",
+                context_sources=""
+            )
+        }
+
+        po_entries = [
+            POEntryData(
+                msgid="Bad Translation",
+                msgstr="Schlechte Übersetzung",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="test.po"
+            )
+        ]
+
+        result = merge_master(existing, po_entries)
+
+        assert len(result) == 1
+        assert result[0].status == "rejected"
+
+    def test_merge_rejected_missing(self):
+        """Test rejected entry missing from PO becomes stale."""
+        existing = {
+            "Rejected": MasterEntry(
+                msgid="Rejected",
+                msgstr="Abgelehnt",
+                status="rejected",
+                score="",
+                context="",
+                context_sources=""
+            )
+        }
+
+        po_entries = []
+
+        result = merge_master(existing, po_entries)
+
+        assert len(result) == 1
+        assert result[0].status == "stale"
+
+    def test_merge_review_updated(self):
+        """Test review entry gets msgstr updated from PO."""
+        existing = {
+            "Submit": MasterEntry(
+                msgid="Submit",
+                msgstr="Senden",
+                status="review",
+                score="",
+                context="form_label",
+                context_sources=""
+            )
+        }
+
+        po_entries = [
+            POEntryData(
+                msgid="Submit",
+                msgstr="Absenden",  # Updated translation
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="forms.py:20",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="django.po"
+            )
+        ]
+
+        result = merge_master(existing, po_entries)
+
+        assert len(result) == 1
+        assert result[0].status == "review"
+        assert result[0].msgstr == "Absenden"  # Updated
+
+    def test_merge_review_missing(self):
+        """Test review entry missing from PO becomes stale."""
+        existing = {
+            "Review": MasterEntry(
+                msgid="Review",
+                msgstr="Überprüfung",
+                status="review",
+                score="",
+                context="",
+                context_sources=""
+            )
+        }
+
+        po_entries = []
+
+        result = merge_master(existing, po_entries)
+
+        assert len(result) == 1
+        assert result[0].status == "stale"
+
+    def test_merge_machine_updated(self):
+        """Test machine entry gets msgstr updated from PO."""
+        existing = {
+            "Machine": MasterEntry(
+                msgid="Machine",
+                msgstr="Maschine",
+                status="machine",
+                score="",
+                context="",
+                context_sources=""
+            )
+        }
+
+        po_entries = [
+            POEntryData(
+                msgid="Machine",
+                msgstr="Maschine Neu",  # Updated
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="test.po"
+            )
+        ]
+
+        result = merge_master(existing, po_entries)
+
+        assert result[0].msgstr == "Maschine Neu"
+
+    def test_merge_machine_missing(self):
+        """Test machine entry missing from PO becomes stale."""
+        existing = {
+            "Machine": MasterEntry(
+                msgid="Machine",
+                msgstr="Maschine",
+                status="machine",
+                score="",
+                context="",
+                context_sources=""
+            )
+        }
+
+        po_entries = []
+
+        result = merge_master(existing, po_entries)
+
+        assert result[0].status == "stale"
+
+    def test_merge_empty_now_translated(self):
+        """Test empty entry now has translation becomes review with score."""
+        existing = {
+            "Empty": MasterEntry(
+                msgid="Empty",
+                msgstr="",
+                status="empty",
+                score="",
+                context="",
+                context_sources=""
+            )
+        }
+
+        po_entries = [
+            POEntryData(
+                msgid="Empty",
+                msgstr="Leer",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="test.po"
+            )
+        ]
+
+        glossary = Glossary(str(FIXTURES_DIR / "glossary_de.yaml"))
+
+        result = merge_master(existing, po_entries, glossary)
+
+        assert result[0].status == "review"
+        assert result[0].msgstr == "Leer"
+
+    def test_merge_empty_still_empty(self):
+        """Test empty entry still empty stays empty."""
+        existing = {
+            "Empty": MasterEntry(
+                msgid="Empty",
+                msgstr="",
+                status="empty",
+                score="",
+                context="",
+                context_sources=""
+            )
+        }
+
+        po_entries = [
+            POEntryData(
+                msgid="Empty",
+                msgstr="",  # Still empty
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="test.po"
+            )
+        ]
+
+        result = merge_master(existing, po_entries)
+
+        assert result[0].status == "empty"
+
+    def test_merge_empty_missing(self):
+        """Test empty entry missing from PO becomes stale."""
+        existing = {
+            "Empty": MasterEntry(
+                msgid="Empty",
+                msgstr="",
+                status="empty",
+                score="",
+                context="",
+                context_sources=""
+            )
+        }
+
+        po_entries = []
+
+        result = merge_master(existing, po_entries)
+
+        assert result[0].status == "stale"
+
+    def test_merge_conflict_present(self):
+        """Test conflict entry present in PO stays conflict."""
+        existing = {
+            "Conflict": MasterEntry(
+                msgid="Conflict",
+                msgstr="Konflikt",
+                status="conflict",
+                score="",
+                context="",
+                context_sources=""
+            )
+        }
+
+        po_entries = [
+            POEntryData(
+                msgid="Conflict",
+                msgstr="Widerspruch",  # Different but doesn't matter
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="test.po"
+            )
+        ]
+
+        result = merge_master(existing, po_entries)
+
+        assert result[0].status == "conflict"
+        assert result[0].msgstr == "Konflikt"  # Preserved
+
+    def test_merge_conflict_missing(self):
+        """Test conflict entry missing from PO becomes stale."""
+        existing = {
+            "Conflict": MasterEntry(
+                msgid="Conflict",
+                msgstr="Konflikt",
+                status="conflict",
+                score="",
+                context="",
+                context_sources=""
+            )
+        }
+
+        po_entries = []
+
+        result = merge_master(existing, po_entries)
+
+        assert result[0].status == "stale"
+
+    def test_merge_stale_reappears(self):
+        """Test stale entry reappearing becomes review."""
+        existing = {
+            "Stale": MasterEntry(
+                msgid="Stale",
+                msgstr="Veraltet",
+                status="stale",
+                score="",
+                context="",
+                context_sources=""
+            )
+        }
+
+        po_entries = [
+            POEntryData(
+                msgid="Stale",
+                msgstr="Veraltet Neu",  # Reappears
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="test.po"
+            )
+        ]
+
+        result = merge_master(existing, po_entries)
+
+        assert result[0].status == "review"
+        assert result[0].msgstr == "Veraltet Neu"
+        # Score should NOT be assigned on reappearance
+        assert result[0].score == ""
+
+    def test_merge_new_msgid(self):
+        """Test new msgid added to master."""
+        existing = {}
+
+        po_entries = [
+            POEntryData(
+                msgid="New Entry",
+                msgstr="Neuer Eintrag",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="test.po"
+            )
+        ]
+
+        result = merge_master(existing, po_entries)
+
+        assert len(result) == 1
+        assert result[0].msgid == "New Entry"
+        assert result[0].status == "review"
+
+
+class TestScorePreservation:
+    """Tests for score preservation during merge."""
+
+    def test_existing_score_preserved_on_rescan(self):
+        """Test that existing scores are preserved during rescan."""
+        existing = {
+            "Username": MasterEntry(
+                msgid="Username",
+                msgstr="Benutzername",
+                status="accepted",
+                score="10",
+                context="form_label",
+                context_sources=""
+            )
+        }
+
+        po_entries = [
+            POEntryData(
+                msgid="Username",
+                msgstr="Benutzername",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="forms.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="django.po"
+            )
+        ]
+
+        result = merge_master(existing, po_entries)
+
+        assert result[0].score == "10"  # Preserved
+
+    def test_manual_score_preserved(self):
+        """Test that manually assigned scores are preserved."""
+        existing = {
+            "Custom": MasterEntry(
+                msgid="Custom",
+                msgstr="Angepasst",
+                status="accepted",
+                score="8",  # Manual score
+                context="",
+                context_sources=""
+            )
+        }
+
+        po_entries = [
+            POEntryData(
+                msgid="Custom",
+                msgstr="Angepasst",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="test.po"
+            )
+        ]
+
+        result = merge_master(existing, po_entries)
+
+        assert result[0].score == "8"  # Preserved
+
+
+class TestContextRefresh:
+    """Tests for context refresh during merge."""
+
+    def test_context_refreshed_for_accepted(self):
+        """Test that context is refreshed even for accepted entries."""
+        existing = {
+            "Username": MasterEntry(
+                msgid="Username",
+                msgstr="Benutzername",
+                status="accepted",
+                score="10",
+                context="old_context",  # Will be updated
+                context_sources=""
+            )
+        }
+
+        po_entries = [
+            POEntryData(
+                msgid="Username",
+                msgstr="Benutzername",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="forms.py:10",  # Should match form_label
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="django.po"
+            )
+        ]
+
+        context_rules = [
+            {'pattern': 'forms.py', 'context': 'form_label'}
+        ]
+
+        result = merge_master(existing, po_entries, None, context_rules)
+
+        assert result[0].context == "form_label"  # Refreshed
+
+    def test_context_aggregates_all_files(self):
+        """Test that context aggregates references from all files."""
+        parser = MultiPOParser([
+            str(FIXTURES_DIR / "django.po"),
+            str(FIXTURES_DIR / "forms.po")
+        ])
+        entries = parser.parse()
+
+        context_rules = [
+            {'pattern': 'forms.py', 'context': 'form_label'},
+            {'pattern': 'forms/login.py', 'context': 'login_form'},
+            {'pattern': 'forms/contact.py', 'context': 'contact_form'},
+            {'pattern': 'admin.py', 'context': 'admin'}
+        ]
+
+        result = create_master(entries, None, context_rules)
+
+        # Find "Username" which appears in both files
+        username = next((e for e in result if e.msgid == "Username"), None)
+
+        assert username is not None
+        # Should have references from both files
+
+
+class TestCSVIO:
+    """Tests for CSV input/output."""
+
+    def test_save_utf8_bom(self):
+        """Test that saved CSV has UTF-8 BOM."""
+        entries = [
+            MasterEntry(
+                msgid="Hello",
+                msgstr="Hallo",
+                status="review",
+                score="",
+                context="",
+                context_sources=""
+            )
+        ]
+
+        with TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "test.csv"
+            save_master(entries, str(output_path))
+
+            # Read raw bytes
+            with open(output_path, 'rb') as f:
+                content = f.read()
+
+            # Check for BOM
+            assert content.startswith(b'\xef\xbb\xbf')
+
+    def test_save_quote_all(self):
+        """Test that all fields are quoted."""
+        entries = [
+            MasterEntry(
+                msgid="Hello",
+                msgstr="Hallo",
+                status="review",
+                score="10",
+                context="message",
+                context_sources=""
+            )
+        ]
+
+        with TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "test.csv"
+            save_master(entries, str(output_path))
+
+            with open(output_path, 'r', encoding='utf-8-sig') as f:
+                lines = f.readlines()
+
+            # Check data line (skip header)
+            data_line = lines[1]
+            # All fields should be quoted
+            assert data_line.startswith('"')
+            assert data_line.strip().endswith('"')
+
+    def test_load_save_roundtrip(self):
+        """Test that load/save roundtrip preserves data."""
+        entries = [
+            MasterEntry(
+                msgid="Hello",
+                msgstr="Hallo",
+                status="accepted",
+                score="10",
+                context="message",
+                context_sources="file1.py=msg;file2.py=label"
+            ),
+            MasterEntry(
+                msgid="Goodbye",
+                msgstr="Auf Wiedersehen",
+                status="review",
+                score="",
+                context="",
+                context_sources=""
+            )
+        ]
+
+        with TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "test.csv"
+
+            # Save
+            save_master(entries, str(output_path))
+
+            # Load
+            loaded = load_master(str(output_path))
+
+            # Compare
+            assert len(loaded) == 2
+            assert "Hello" in loaded
+            assert loaded["Hello"].msgstr == "Hallo"
+            assert loaded["Hello"].status == "accepted"
+            assert loaded["Hello"].score == "10"
+            assert loaded["Hello"].context == "message"
+            assert loaded["Hello"].context_sources == "file1.py=msg;file2.py=label"
+
+    def test_column_order(self):
+        """Test that columns are in correct order."""
+        entries = [
+            MasterEntry(
+                msgid="Hello",
+                msgstr="Hallo",
+                status="review",
+                score="",
+                context="",
+                context_sources=""
+            )
+        ]
+
+        with TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "test.csv"
+            save_master(entries, str(output_path))
+
+            with open(output_path, 'r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                fieldnames = reader.fieldnames
+
+            expected = ['msgid', 'msgstr', 'status', 'score', 'context', 'context_sources']
+            assert fieldnames == expected
+
+
+class TestCLIMaster:
+    """Integration tests for CLI master CSV commands."""
+
+    def test_master_creates_new_csv(self):
+        """Test creating new master CSV via CLI."""
+        with TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "polyglott-accepted-de.csv"
+
+            result = subprocess.run(
+                [
+                    "polyglott", "scan",
+                    str(FIXTURES_DIR / "django.po"),
+                    "--master", str(output_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+            assert output_path.exists()
+
+            # Load and verify
+            with open(output_path, 'r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+            assert len(rows) == 6  # 6 entries in django.po
+
+    def test_master_updates_existing(self):
+        """Test updating existing master CSV."""
+        with TemporaryDirectory() as tmpdir:
+            # Copy existing master
+            import shutil
+            master_path = Path(tmpdir) / "polyglott-accepted-de.csv"
+            shutil.copy(FIXTURES_DIR / "master_existing.csv", master_path)
+
+            # Run scan to update with multiple files using --include
+            result = subprocess.run(
+                [
+                    "polyglott", "scan",
+                    "--include", str(FIXTURES_DIR / "*.po"),
+                    "--master", str(master_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+
+            # Load and verify
+            loaded = load_master(str(master_path))
+
+            # "Will be stale" should now be stale (not in current PO files)
+            assert "Will be stale" in loaded
+            assert loaded["Will be stale"].status == "stale"
+
+    def test_master_with_context_rules(self):
+        """Test master CSV with context rules."""
+        with TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "polyglott-accepted-de.csv"
+
+            # Create simple context rules
+            rules_path = Path(tmpdir) / "rules.yaml"
+            rules_path.write_text("""rules:
+  - pattern: 'forms.py'
+    context: 'form_label'
+  - pattern: 'views.py'
+    context: 'message'
+""")
+
+            result = subprocess.run(
+                [
+                    "polyglott", "scan",
+                    str(FIXTURES_DIR / "django.po"),
+                    "--master", str(output_path),
+                    "--context-rules", str(rules_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+
+            # Load and verify context
+            loaded = load_master(str(output_path))
+            assert loaded["Username"].context == "form_label"
+            assert loaded["Login successful"].context == "message"
+
+    def test_master_with_glossary(self):
+        """Test master CSV with glossary scoring."""
+        with TemporaryDirectory() as tmpdir:
+            output_path = Path(tmpdir) / "polyglott-accepted-de.csv"
+
+            result = subprocess.run(
+                [
+                    "polyglott", "scan",
+                    str(FIXTURES_DIR / "django.po"),
+                    "--master", str(output_path),
+                    "--glossary", str(FIXTURES_DIR / "glossary_de.yaml")
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+
+            # Load and verify scores
+            loaded = load_master(str(output_path))
+
+            # These should have score 10 (exact glossary matches)
+            assert loaded["Username"].score == "10"
+            assert loaded["Password"].score == "10"
+            assert loaded["Submit"].score == "10"
+            assert loaded["User"].score == "10"
+
+    def test_master_mutually_exclusive_with_output(self):
+        """Test that --master and -o are mutually exclusive."""
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "polyglott-accepted-de.csv"
+            output_path = Path(tmpdir) / "output.csv"
+
+            result = subprocess.run(
+                [
+                    "polyglott", "scan",
+                    str(FIXTURES_DIR / "django.po"),
+                    "--master", str(master_path),
+                    "-o", str(output_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 1
+            assert "Cannot specify both --master and -o/--output" in result.stderr
+
+    def test_master_invalid_filename(self):
+        """Test that invalid master filename is rejected."""
+        with TemporaryDirectory() as tmpdir:
+            invalid_path = Path(tmpdir) / "invalid-name.csv"
+
+            result = subprocess.run(
+                [
+                    "polyglott", "scan",
+                    str(FIXTURES_DIR / "django.po"),
+                    "--master", str(invalid_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 1
+            assert "must match pattern" in result.stderr
+
+    def test_master_no_po_files(self):
+        """Test error when no PO files found."""
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "polyglott-accepted-de.csv"
+
+            result = subprocess.run(
+                [
+                    "polyglott", "scan",
+                    "--include", "*.nonexistent",
+                    "--master", str(master_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 1
+            assert "No PO files found" in result.stderr
+
+    def test_conflict_detection_roundtrip(self):
+        """Test conflict detection in full workflow."""
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "polyglott-accepted-de.csv"
+
+            # Initial scan
+            subprocess.run(
+                [
+                    "polyglott", "scan",
+                    str(FIXTURES_DIR / "django.po"),
+                    "--master", str(master_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            # Manually edit master to mark Password as accepted
+            loaded = load_master(str(master_path))
+            for msgid, entry in loaded.items():
+                if msgid == "Password":
+                    loaded[msgid] = MasterEntry(
+                        msgid=entry.msgid,
+                        msgstr=entry.msgstr,
+                        status="accepted",  # Mark as accepted
+                        score=entry.score,
+                        context=entry.context,
+                        context_sources=entry.context_sources
+                    )
+
+            save_master(list(loaded.values()), str(master_path))
+
+            # Rescan with forms.po which has different translation for Password
+            result = subprocess.run(
+                [
+                    "polyglott", "scan",
+                    str(FIXTURES_DIR / "forms.po"),
+                    "--master", str(master_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+
+            # Verify conflict detected
+            reloaded = load_master(str(master_path))
+            # Password in forms.po is "Kennwort" vs "Passwort" in django.po
+            assert reloaded["Password"].status == "conflict"
+            assert reloaded["Password"].msgstr == "Passwort"  # Original preserved

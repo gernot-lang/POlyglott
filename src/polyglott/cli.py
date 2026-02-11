@@ -4,6 +4,7 @@ import argparse
 import glob
 import os
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import List, Optional
 
@@ -214,6 +215,24 @@ def cmd_scan(args: argparse.Namespace) -> int:
         Exit code (0 for success, 1 for error)
     """
     try:
+        # Validate master CSV arguments
+        if hasattr(args, 'master') and args.master:
+            # Check mutual exclusivity with --output
+            if args.output:
+                print("Error: Cannot specify both --master and -o/--output", file=sys.stderr)
+                return 1
+
+            # Validate filename format
+            import re
+            master_filename = Path(args.master).name
+            if not re.match(r'^polyglott-accepted-[a-z]{2,3}\.csv$', master_filename):
+                print(
+                    f"Error: Master CSV filename must match pattern 'polyglott-accepted-<lang>.csv', "
+                    f"got '{master_filename}'",
+                    file=sys.stderr
+                )
+                return 1
+
         # Load context rules if specified
         try:
             context_rules = load_context_rules_from_args(args)
@@ -272,7 +291,42 @@ def cmd_scan(args: argparse.Namespace) -> int:
                 entry_key = (entry.msgid, entry.msgctxt, entry.plural_index)
                 context_data[entry_key] = (context, context_sources)
 
-        # Export to CSV
+        # Check if master CSV mode
+        if hasattr(args, 'master') and args.master:
+            # Master CSV mode
+            from polyglott.master import load_master, save_master, create_master, merge_master
+
+            # Load glossary if provided
+            glossary = None
+            if hasattr(args, 'glossary') and args.glossary:
+                try:
+                    from polyglott.linter import Glossary
+                    glossary = Glossary(args.glossary)
+                except (FileNotFoundError, ValueError) as e:
+                    print(f"Error loading glossary: {e}", file=sys.stderr)
+                    return 1
+
+            # Check if master exists
+            if Path(args.master).exists():
+                existing = load_master(args.master)
+                result = merge_master(existing, entries, glossary, context_rules)
+            else:
+                result = create_master(entries, glossary, context_rules)
+
+            # Save master CSV
+            save_master(result, args.master)
+
+            # Print statistics to stderr
+            print(f"\nMaster CSV: {args.master}", file=sys.stderr)
+            print(f"  Total entries: {len(result)}", file=sys.stderr)
+
+            status_counts = Counter(e.status for e in result)
+            for status in sorted(status_counts.keys()):
+                print(f"  {status}: {status_counts[status]}", file=sys.stderr)
+
+            return 0
+
+        # Regular export mode
         export_to_csv(
             entries,
             output_file=args.output,
@@ -363,6 +417,16 @@ def main() -> int:
     scan_parser.add_argument(
         "--preset",
         help="Use built-in context preset (e.g., 'django')"
+    )
+
+    scan_parser.add_argument(
+        "--master",
+        help="Path to master CSV (creates or updates, e.g., polyglott-accepted-de.csv)"
+    )
+
+    scan_parser.add_argument(
+        "--glossary",
+        help="Path to YAML glossary file (for master CSV scoring)"
     )
 
     # Lint subcommand

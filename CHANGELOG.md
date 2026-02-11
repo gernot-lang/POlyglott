@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - TBD
+
+### Added
+
+- Translation master CSV for project-wide translation management
+- `--master` flag for scan command to create/update master CSV instead of regular export
+- Deduplication by msgid across multiple PO files (single master row per msgid)
+- Status tracking with lifecycle: empty → review → accepted/rejected → stale/conflict
+- Merge workflow that preserves human decisions (accepted/rejected status) across rescans
+- Conflict detection when PO files diverge from accepted translations
+- Automatic quality scoring for exact glossary matches (score: 10)
+- Context refresh on every rescan (reflects current codebase state)
+- Majority voting for msgstr conflict resolution when deduplicating
+- Reference aggregation from all source files for context inference
+- Master CSV validation: filename must match `polyglott-accepted-<lang>.csv` pattern
+- Master CSV with UTF-8 BOM encoding, all fields quoted (QUOTE_ALL), sorted by msgid
+- 12+ status transition rules for merge workflow
+- Comprehensive test suite for master CSV functionality (46 additional tests)
+
 ## [0.3.3] - 2026-02-11
 
 ### Fixed
@@ -77,6 +96,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suite (34 tests covering parser, exporter, and CLI)
 
 [Unreleased]: #
+
+[0.4.0]: #
 
 [0.3.3]: #
 

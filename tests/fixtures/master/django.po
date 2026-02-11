@@ -1,0 +1,29 @@
+# Django German translations for testing
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: de\n"
+
+#: forms.py:10
+msgid "Username"
+msgstr "Benutzername"
+
+#: forms.py:15
+msgid "Password"
+msgstr "Passwort"
+
+#: forms.py:20
+msgid "Submit"
+msgstr "Absenden"
+
+#: models.py:5
+msgid "User"
+msgstr "Benutzer"
+
+#: views.py:12
+msgid "Login successful"
+msgstr "Anmeldung erfolgreich"
+
+#: views.py:18
+msgid "Invalid credentials"
+msgstr ""
