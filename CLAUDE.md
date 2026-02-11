@@ -168,7 +168,7 @@ chore: description           # Maintenance
 | 4     | v0.4.0  | Translation master CSV                   | `feature/master-csv`        |
 | 5     | v0.5.0  | DeepL integration                        | `feature/deepl`             |
 
-See `prompts/StageX.md` for detailed specifications.
+See `prompts/stageX.md` for detailed specifications.
 
 ## CHANGELOG Requirements
 
@@ -189,7 +189,7 @@ Follow [Keep a Changelog](https://keepachangelog.com/) strictly:
 | `CHANGELOG.md`      | Release notes, Keep a Changelog format           |
 | `CLAUDE.md`         | This file — Claude Code project instructions     |
 | `AI_DEVELOPMENT.md` | How this project was built with Claude Code      |
-| `prompts/StageX.md` | Stage specifications used as Claude Code prompts |
+| `prompts/stageX.md` | Stage specifications used as Claude Code prompts |
 
 **Do NOT create additional .md files.** All user documentation goes into `README.md`.
 
