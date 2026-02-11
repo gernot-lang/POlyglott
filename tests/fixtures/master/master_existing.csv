@@ -1,0 +1,7 @@
+"msgid","msgstr","status","score","context","context_sources"
+"Login successful","Anmeldung erfolgreich","accepted","","message",""
+"Password","Passwort","accepted","10","form_label",""
+"Save","Speichern","review","","admin",""
+"Submit","Absenden","review","10","form_label",""
+"Username","Benutzername","accepted","10","form_label",""
+"Will be stale","Old translation","review","","",""
