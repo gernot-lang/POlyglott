@@ -27,12 +27,14 @@ The git history reflects actual execution against these specs. Feature branches 
 ### Feature Development vs Bugfixes
 
 **Feature branches** (stages):
+
 - Branch from `develop`
 - Implement feature with tests
 - Bump minor version (0.1.0 → 0.2.0)
 - Merge develop → main → tag
 
 **Bugfix branches** (post-release):
+
 - Branch from `main` (fixes production code)
 - **TDD required**: Write failing test first
 - Fix the issue
@@ -55,12 +57,14 @@ POlyglott follows TDD, especially for bugfixes:
 4. **Verify all tests pass** including the new one
 
 This approach:
+
 - Ensures bugs are actually fixed (not just symptoms)
 - Prevents regressions through test coverage
 - Documents the bug's reproduction steps
 - Provides confidence in the fix
 
 Example from v0.3.2:
+
 - User reported: `'list' object has no attribute 'items'`
 - Added test with list-format glossary → FAILED ✓
 - Fixed validation in `linter.py` → PASSED ✓
@@ -69,6 +73,7 @@ Example from v0.3.2:
 ### CHANGELOG Discipline
 
 Every release (feature or bugfix) updates `CHANGELOG.md` **before** tagging:
+
 - User-facing descriptions, not implementation details
 - Grouped by Added, Changed, Fixed, Removed
 - Clear, concise explanations of what changed

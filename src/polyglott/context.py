@@ -6,7 +6,6 @@ from typing import List, Tuple, Dict, Any
 
 import yaml
 
-
 # Built-in presets
 PRESETS = {
     'django': [

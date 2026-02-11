@@ -33,7 +33,7 @@ Use the venv's bump-my-version (not system Python):
 .venv/bin/bump-my-version bump patch  # 0.1.0 → 0.1.1
 ```
 
-**Important:** Configuration uses `[tool.bumpversion]` (not `[tool.bump-my-version]`) in pyproject.toml.
+**Important:** Configuration uses `[tool.bumpversion]` (not `[tool.bump-my-version]`) in pyproject.toml. `tag = false` in pyproject.toml — tagging is handled manually in the workflow, never by bump-my-version.
 
 ### CLI
 
@@ -63,18 +63,40 @@ src/polyglott/
 
 - **polib**: PO file parsing
 - **pandas**: DataFrame manipulation and CSV export
+- **pyyaml**: Glossary and context rules
 - **pytest**: Testing
 - **bump-my-version**: Version management
+
+### Version Testing
+
+Do NOT hardcode version strings in tests. Import from the package:
+
+```python
+from polyglott import __version__
+
+
+def test_version():
+    assert __version__  # just verify it exists and is non-empty
+```
 
 ## Git Workflow
 
 POlyglott uses a simplified Git Flow with no squash merges.
+
+**Claude Code executes the full git workflow** — branching, committing, merging, bumping, and tagging. Always follow the exact sequences below. In particular:
+
+- **Create `develop` from `main`** if it doesn't exist
+- **Create `feature/*` from `develop`**, never from `main`
+- **Create `fix/*` from `main`**, never from `develop`
+- **Never commit directly to `main` or `develop`** — always work on a feature or fix branch
+- **Never delete `main` or `develop`** — only delete feature/* and fix/* branches after merging
 
 ### Branch Structure
 
 - **main**: Production releases, tagged with annotated version tags
 - **develop**: Integration branch for completed features
 - **feature/***: One feature branch per stage
+- **fix/***: Bugfix branches after release
 
 ### Feature Development (per stage)
 
@@ -92,7 +114,7 @@ git checkout develop
 git merge --no-ff feature/feature-name
 
 # 4. Bump version on develop
-bump-my-version bump minor
+.venv/bin/bump-my-version bump minor
 
 # 5. Update CHANGELOG.md (move Unreleased items to version section with date)
 git add CHANGELOG.md
@@ -125,16 +147,16 @@ Manual testing happens after tagging a release on `main`. If bugs or deficiencie
 **⚠️ CRITICAL REQUIREMENTS:**
 
 1. **Always verify current branch before tagging**
-   - Tags MUST be on main, on the version bump commit
-   - Use `git branch --show-current` before EVERY tag operation
-   - NEVER tag while on a feature/fix branch
+    - Tags MUST be on main, on the version bump commit
+    - Use `git branch --show-current` before EVERY tag operation
+    - NEVER tag while on a feature/fix branch
 
 2. **Follow Test-Driven Development (TDD) for all bugfixes:**
-1. Write a failing test that reproduces the bug
-2. Verify the test fails with the exact error
-3. Fix the code
-4. Verify the test passes
-5. Ensure all other tests still pass
+    1. Write a failing test that reproduces the bug
+    2. Verify the test fails with the exact error
+    3. Fix the code
+    4. Verify the test passes
+    5. Ensure all other tests still pass
 
 ```bash
 # 1. Branch from main (where the tag is)
@@ -188,19 +210,15 @@ git tag -a v0.X.Y -m "Fix description (concise)"
 # VERIFY THE TAG IS CORRECT:
 git show v0.X.Y --no-patch --format="%d %s"  # Should show the version bump commit
 
-# 13. Update version test (if exists)
-# Edit tests/test_cli.py version check to match new version
-git add tests/test_cli.py
-git commit -m "test: update version check to 0.X.Y"
-
-# 14. Push everything
+# 12. Push everything
 git push origin main develop --tags
 
-# 15. Clean up
+# 13. Clean up
 git branch -d fix/description
 ```
 
 **Key differences from feature branches:**
+
 - Branch from **main** (not develop) — fixes production code
 - Merge to **both** main and develop (not just develop)
 - Bump **patch** version (0.3.1 → 0.3.2), not minor
@@ -215,6 +233,9 @@ git branch -d fix/description
 - **Annotated tags only** — `git tag -a` with descriptive messages
 - **Version bump happens on develop** — before merging to main (for features)
 - **Bugfix version bump on main** — patch bump after fix merges to both branches
+- **Never delete `main` or `develop`** — only delete feature/* and fix/* branches
+- **Never commit directly to `main` or `develop`** — always use a branch
+- **Always use `.venv/bin/bump-my-version`** — never the system-installed version
 
 ### Commit Messages
 
@@ -298,3 +319,4 @@ POlyglott follows TDD principles, especially for bugfixes:
 - Bugfix tests must reproduce the exact error users reported
 - Test edge cases (Unicode, malformed PO files, plurals, empty data)
 - Use descriptive test names that explain what is being tested
+- Do NOT hardcode version strings in tests — import `__version__` from package

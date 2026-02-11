@@ -330,9 +330,9 @@ terms:
 
         # All these translations should match (case-insensitive)
         test_cases = [
-            ("pipeline", "pipeline"),      # lowercase
-            ("pipeline", "Pipeline"),      # exact match
-            ("pipeline", "PIPELINE"),      # uppercase
+            ("pipeline", "pipeline"),  # lowercase
+            ("pipeline", "Pipeline"),  # exact match
+            ("pipeline", "PIPELINE"),  # uppercase
             ("pipeline", "Die pipeline ist"),  # in sentence
             ("pipeline", "Die Pipeline ist"),  # in sentence, capitalized
         ]

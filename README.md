@@ -187,6 +187,7 @@ polyglott scan messages.po --preset django -o output.csv
 ```
 
 The Django preset includes common patterns:
+
 - `tables.py` → column_header
 - `forms.py`, `forms/` → form_label
 - `models.py`, `serializers.py` → field_label
@@ -204,6 +205,7 @@ When context inference is active, CSV output includes:
 - **context_sources**: Semicolon-separated `filepath=context` pairs (only populated when ambiguous)
 
 **Ambiguity Handling:**
+
 - If all source references agree on a context → use that context
 - If one context has a clear majority → use the majority context
 - If there's a tie → mark as `ambiguous` and populate `context_sources`
@@ -269,6 +271,7 @@ polyglott lint --include "**/*.po" --exclude "vendor/*.po" --format text
 Multi-file mode adds `source_file` as the first column.
 
 Context inference (with `--context-rules` or `--preset`) adds:
+
 - `context`: Inferred UI context label
 - `context_sources`: Disambiguation info (only when ambiguous)
 
