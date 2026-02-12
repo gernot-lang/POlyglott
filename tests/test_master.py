@@ -1056,7 +1056,7 @@ class TestCSVIO:
                 reader = csv.DictReader(f)
                 fieldnames = reader.fieldnames
 
-            expected = ['msgid', 'msgstr', 'status', 'score', 'context', 'context_sources']
+            expected = ['msgid', 'msgstr', 'status', 'score', 'context', 'context_sources', 'candidate']
             assert fieldnames == expected
 
 
@@ -1357,3 +1357,376 @@ class TestLanguageInference:
         """Test inferring complex language code like zh-hans."""
         lang = infer_language("master-zh-hans.csv")
         assert lang == "zh-hans"
+
+
+class TestStage7CandidateColumn:
+    """Tests for Stage 7: candidate column functionality."""
+
+    def test_master_entry_has_candidate_field(self):
+        """Test that MasterEntry includes candidate field."""
+        entry = MasterEntry(
+            msgid="Save",
+            msgstr="Guardar",
+            status="accepted",
+            score="",
+            context="",
+            context_sources="",
+            candidate="Almacenar"
+        )
+        assert entry.candidate == "Almacenar"
+
+    def test_candidate_empty_by_default(self):
+        """Test that candidate defaults to empty string."""
+        entry = MasterEntry(
+            msgid="Save",
+            msgstr="Guardar",
+            status="accepted",
+            score="",
+            context="",
+            context_sources=""
+        )
+        assert entry.candidate == ''
+
+    def test_load_master_adds_missing_candidate_column(self):
+        """Test that load_master adds candidate column if missing (pre-Stage 7 CSV)."""
+        with TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "test.csv"
+
+            # Write CSV without candidate column (pre-Stage 7 format)
+            with open(csv_path, 'w', encoding='utf-8-sig', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=['msgid', 'msgstr', 'status', 'score', 'context', 'context_sources'], quoting=csv.QUOTE_ALL)
+                writer.writeheader()
+                writer.writerow({
+                    'msgid': 'Save',
+                    'msgstr': 'Guardar',
+                    'status': 'accepted',
+                    'score': '',
+                    'context': '',
+                    'context_sources': ''
+                })
+
+            # Load should add candidate column with empty value
+            result = load_master(str(csv_path))
+
+            assert 'Save' in result
+            assert result['Save'].candidate == ''
+
+    def test_save_and_load_roundtrip_with_candidate(self):
+        """Test that candidate survives save → load roundtrip."""
+        with TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "test.csv"
+
+            entries = [
+                MasterEntry(
+                    msgid="Save",
+                    msgstr="Guardar",
+                    status="machine",
+                    score="",
+                    context="",
+                    context_sources="",
+                    candidate="Almacenar"
+                )
+            ]
+
+            save_master(entries, str(csv_path))
+            loaded = load_master(str(csv_path))
+
+            assert loaded['Save'].candidate == "Almacenar"
+
+    def test_merge_preserves_candidate_column(self):
+        """Test that merge_master preserves candidate values."""
+        existing = {
+            "Save": MasterEntry(
+                msgid="Save",
+                msgstr="Guardar",
+                status="machine",
+                score="",
+                context="",
+                context_sources="",
+                candidate="Almacenar"
+            )
+        }
+
+        po_entries = [
+            POEntryData(
+                msgid="Save",
+                msgstr="Guardar",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="test.po"
+            )
+        ]
+
+        result = merge_master(existing, po_entries)
+
+        assert result[0].candidate == "Almacenar"
+
+
+class TestStage7ColumnSovereignty:
+    """Tests for Stage 7: column sovereignty (preserving user columns)."""
+
+    def test_load_preserves_user_columns(self):
+        """Test that load_master preserves user-added columns."""
+        with TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "test.csv"
+
+            # Write CSV with user columns
+            with open(csv_path, 'w', encoding='utf-8-sig', newline='') as f:
+                fieldnames = ['msgid', 'msgstr', 'status', 'score', 'context', 'context_sources', 'candidate', 'notes', 'reviewer']
+                writer = csv.DictWriter(f, fieldnames=fieldnames, quoting=csv.QUOTE_ALL)
+                writer.writeheader()
+                writer.writerow({
+                    'msgid': 'Save',
+                    'msgstr': 'Guardar',
+                    'status': 'accepted',
+                    'score': '',
+                    'context': '',
+                    'context_sources': '',
+                    'candidate': '',
+                    'notes': 'needs review',
+                    'reviewer': 'Alice'
+                })
+
+            result = load_master(str(csv_path))
+
+            assert result['Save'].extra_columns['notes'] == 'needs review'
+            assert result['Save'].extra_columns['reviewer'] == 'Alice'
+
+    def test_save_preserves_user_columns(self):
+        """Test that save_master preserves user-added columns."""
+        with TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "test.csv"
+
+            entries = [
+                MasterEntry(
+                    msgid="Save",
+                    msgstr="Guardar",
+                    status="accepted",
+                    score="",
+                    context="",
+                    context_sources="",
+                    candidate="",
+                    extra_columns={'notes': 'needs review', 'reviewer': 'Alice'}
+                )
+            ]
+
+            save_master(entries, str(csv_path))
+
+            # Read back with csv module to verify
+            with open(csv_path, 'r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+            assert len(rows) == 1
+            assert rows[0]['notes'] == 'needs review'
+            assert rows[0]['reviewer'] == 'Alice'
+
+    def test_column_order_polyglott_first(self):
+        """Test that POlyglott columns come first, user columns after."""
+        with TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "test.csv"
+
+            # Create entry with user columns in mixed order
+            entries = [
+                MasterEntry(
+                    msgid="Save",
+                    msgstr="Guardar",
+                    status="accepted",
+                    score="",
+                    context="",
+                    context_sources="",
+                    candidate="",
+                    extra_columns={'priority': '1', 'reviewer': 'Alice', 'notes': 'check this'}
+                )
+            ]
+
+            save_master(entries, str(csv_path))
+
+            # Read header to check column order
+            with open(csv_path, 'r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                cols = reader.fieldnames
+
+            # POlyglott columns should come first
+            from polyglott.master import POLYGLOTT_COLUMNS
+            for i, col in enumerate(POLYGLOTT_COLUMNS):
+                assert cols[i] == col
+
+            # User columns should come after
+            assert 'priority' in cols
+            assert 'reviewer' in cols
+            assert 'notes' in cols
+
+    def test_user_columns_survive_roundtrip(self):
+        """Test that user columns survive save → load → save cycle."""
+        with TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "test.csv"
+
+            # Original entries with user columns
+            original = [
+                MasterEntry(
+                    msgid="Save",
+                    msgstr="Guardar",
+                    status="accepted",
+                    score="",
+                    context="",
+                    context_sources="",
+                    candidate="",
+                    extra_columns={'notes': 'important', 'reviewer': 'Bob'}
+                )
+            ]
+
+            # Save → load → save → load
+            save_master(original, str(csv_path))
+            loaded1 = load_master(str(csv_path))
+            entries1 = list(loaded1.values())
+            save_master(entries1, str(csv_path))
+            loaded2 = load_master(str(csv_path))
+
+            # User columns should still be there
+            assert loaded2['Save'].extra_columns['notes'] == 'important'
+            assert loaded2['Save'].extra_columns['reviewer'] == 'Bob'
+
+    def test_different_entries_different_user_columns(self):
+        """Test that entries can have different user columns."""
+        with TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "test.csv"
+
+            entries = [
+                MasterEntry(
+                    msgid="Save",
+                    msgstr="Guardar",
+                    status="accepted",
+                    score="",
+                    context="",
+                    context_sources="",
+                    candidate="",
+                    extra_columns={'notes': 'A'}
+                ),
+                MasterEntry(
+                    msgid="Cancel",
+                    msgstr="Cancelar",
+                    status="accepted",
+                    score="",
+                    context="",
+                    context_sources="",
+                    candidate="",
+                    extra_columns={'reviewer': 'Bob'}
+                )
+            ]
+
+            save_master(entries, str(csv_path))
+
+            # Read back
+            with open(csv_path, 'r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+            # Both columns should exist in CSV
+            assert 'notes' in rows[0]
+            assert 'reviewer' in rows[0]
+
+            # First entry has notes, no reviewer
+            assert rows[0]['notes'] == 'A'
+            assert rows[0]['reviewer'] == ''
+
+            # Second entry has reviewer, no notes
+            assert rows[1]['notes'] == ''
+            assert rows[1]['reviewer'] == 'Bob'
+
+    def test_merge_preserves_user_columns(self):
+        """Test that merge_master preserves user columns from existing entries."""
+        existing = {
+            "Save": MasterEntry(
+                msgid="Save",
+                msgstr="Guardar",
+                status="accepted",
+                score="",
+                context="",
+                context_sources="",
+                candidate="",
+                extra_columns={'notes': 'important', 'reviewer': 'Alice'}
+            )
+        }
+
+        po_entries = [
+            POEntryData(
+                msgid="Save",
+                msgstr="Guardar",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="test.po"
+            )
+        ]
+
+        result = merge_master(existing, po_entries)
+
+        # User columns should be preserved
+        assert result[0].extra_columns['notes'] == 'important'
+        assert result[0].extra_columns['reviewer'] == 'Alice'
+
+    def test_new_entries_have_empty_user_columns(self):
+        """Test that new entries from merge have no user columns."""
+        existing = {
+            "Save": MasterEntry(
+                msgid="Save",
+                msgstr="Guardar",
+                status="accepted",
+                score="",
+                context="",
+                context_sources="",
+                candidate="",
+                extra_columns={'notes': 'keep this'}
+            )
+        }
+
+        po_entries = [
+            POEntryData(
+                msgid="Save",
+                msgstr="Guardar",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file.py:10",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="test.po"
+            ),
+            POEntryData(
+                msgid="Cancel",
+                msgstr="Cancelar",
+                msgctxt=None,
+                extracted_comments="",
+                translator_comments="",
+                references="file.py:20",
+                fuzzy=False,
+                obsolete=False,
+                is_plural=False,
+                plural_index=None,
+                source_file="test.po"
+            )
+        ]
+
+        result = merge_master(existing, po_entries)
+
+        # Existing entry keeps user columns
+        save_entry = [e for e in result if e.msgid == "Save"][0]
+        assert save_entry.extra_columns['notes'] == 'keep this'
+
+        # New entry has no user columns
+        cancel_entry = [e for e in result if e.msgid == "Cancel"][0]
+        assert cancel_entry.extra_columns == {}
