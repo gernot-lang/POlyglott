@@ -24,6 +24,21 @@ pytest -v           # Verbose output
 pytest tests/test_parser.py  # Specific file
 ```
 
+## Known Issues
+
+### Export write counter (po_writer.py)
+
+Export reports all matching entries as "writes" even when PO msgstr already matches master CSV.
+Second consecutive export should report 0 writes but reports the same count as the first run.
+
+**Required fix:** Three-state counting:
+
+- **write**: PO msgstr was empty, filled from master
+- **overwrite**: PO msgstr had a different value, replaced by master
+- **skip**: PO msgstr already matches master
+
+Console output should reflect all three states. Idempotent export must report 0 writes on second run.
+
 ### Version Bumping
 
 Use the venv's bump-my-version (not system Python):
@@ -330,8 +345,10 @@ Follow [Keep a Changelog](https://keepachangelog.com/) strictly:
 | `CLAUDE.md`         | This file — Claude Code project instructions     |
 | `AI_DEVELOPMENT.md` | How this project was built with Claude Code      |
 | `prompts/stageX.md` | Stage specifications used as Claude Code prompts |
+| `reviews/`          | Code review reports and template                 |
 
-**Do NOT create additional .md files.** All user documentation goes into `README.md`.
+**Do NOT create additional .md files** except in `prompts/` and `reviews/`.
+All user documentation goes into `README.md`.
 
 ## Important Constraints
 
