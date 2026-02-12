@@ -2,12 +2,25 @@
 
 import csv
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from polyglott.parser import POEntryData
 from polyglott.context import match_context
+
+
+# Reserved columns that POlyglott reads and writes
+# All other columns are user-added and preserved verbatim
+POLYGLOTT_COLUMNS = [
+    'msgid',
+    'msgstr',
+    'status',
+    'score',
+    'context',
+    'context_sources',
+    'candidate',  # Stage 7: non-destructive machine translation
+]
 
 
 @dataclass
@@ -20,6 +33,9 @@ class MasterEntry:
     score: str  # "10" or "" (string for CSV compatibility)
     context: str
     context_sources: str
+    candidate: str = ''  # Stage 7: machine translation suggestion
+    # User-added columns (column sovereignty)
+    extra_columns: Dict[str, str] = field(default_factory=dict)
 
 
 def deduplicate_entries(po_entries: List[POEntryData]) -> Dict[str, POEntryData]:
@@ -190,7 +206,9 @@ def create_master(
             status=status,
             score=score,
             context=context,
-            context_sources=context_sources
+            context_sources=context_sources,
+            candidate='',
+            extra_columns={}
         ))
 
     # Sort by msgid for stable git diffs
@@ -319,7 +337,9 @@ def _apply_merge_rules(
         status=status,
         score=score,
         context=context,
-        context_sources=context_sources
+        context_sources=context_sources,
+        candidate=existing.candidate,  # Preserve candidate
+        extra_columns=existing.extra_columns  # Preserve user columns
     )
 
 
@@ -345,7 +365,9 @@ def _handle_missing_entry(existing: MasterEntry) -> MasterEntry:
         status=status,
         score=existing.score,
         context=existing.context,
-        context_sources=existing.context_sources
+        context_sources=existing.context_sources,
+        candidate=existing.candidate,  # Preserve candidate
+        extra_columns=existing.extra_columns  # Preserve user columns
     )
 
 
@@ -381,7 +403,9 @@ def _create_new_entry(
         status=status,
         score=score,
         context=context,
-        context_sources=context_sources
+        context_sources=context_sources,
+        candidate='',  # New entries have no candidate
+        extra_columns={}  # New entries have no user columns
     )
 
 
@@ -450,7 +474,11 @@ def infer_language(master_csv_path: str, lang_override: Optional[str] = None) ->
 
 
 def load_master(path: str) -> Dict[str, MasterEntry]:
-    """Load existing master CSV into dictionary.
+    """Load existing master CSV into dictionary with column sovereignty.
+
+    POlyglott columns are loaded into MasterEntry fields.
+    User-added columns are preserved in extra_columns dict.
+    Missing POlyglott columns are added with empty defaults.
 
     Args:
         path: Path to master CSV file
@@ -459,7 +487,7 @@ def load_master(path: str) -> Dict[str, MasterEntry]:
         Dictionary mapping msgid to MasterEntry
 
     Raises:
-        ValueError: If CSV is malformed or missing required columns
+        ValueError: If CSV is malformed or missing msgid column
     """
     master_path = Path(path)
 
@@ -472,23 +500,32 @@ def load_master(path: str) -> Dict[str, MasterEntry]:
         with open(master_path, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
 
-            # Validate columns
-            expected_cols = {'msgid', 'msgstr', 'status', 'score', 'context', 'context_sources'}
-            if not expected_cols.issubset(set(reader.fieldnames or [])):
+            # Validate that msgid column exists (minimum requirement)
+            if not reader.fieldnames or 'msgid' not in reader.fieldnames:
                 raise ValueError(
-                    f"Master CSV missing required columns. "
-                    f"Expected: {expected_cols}, Found: {set(reader.fieldnames or [])}"
+                    f"Master CSV missing required 'msgid' column. "
+                    f"Found columns: {reader.fieldnames}"
                 )
 
             for row in reader:
                 msgid = row['msgid']
+
+                # Separate POlyglott columns from user columns
+                extra_columns = {}
+                for col_name, col_value in row.items():
+                    if col_name not in POLYGLOTT_COLUMNS:
+                        extra_columns[col_name] = col_value
+
+                # Create entry with POlyglott columns (use empty string for missing)
                 entries[msgid] = MasterEntry(
                     msgid=msgid,
-                    msgstr=row['msgstr'],
-                    status=row['status'],
-                    score=row['score'],
-                    context=row['context'],
-                    context_sources=row['context_sources']
+                    msgstr=row.get('msgstr', ''),
+                    status=row.get('status', ''),
+                    score=row.get('score', ''),
+                    context=row.get('context', ''),
+                    context_sources=row.get('context_sources', ''),
+                    candidate=row.get('candidate', ''),
+                    extra_columns=extra_columns
                 )
 
     except Exception as e:
@@ -498,7 +535,10 @@ def load_master(path: str) -> Dict[str, MasterEntry]:
 
 
 def save_master(entries: List[MasterEntry], path: str) -> None:
-    """Save master entries to CSV file.
+    """Save master entries to CSV file with column sovereignty.
+
+    POlyglott columns are written first (in POLYGLOTT_COLUMNS order).
+    User columns are written after, maintaining their relative order.
 
     Args:
         entries: List of MasterEntry objects
@@ -509,18 +549,37 @@ def save_master(entries: List[MasterEntry], path: str) -> None:
     # Ensure parent directory exists
     master_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Collect all user column names across all entries (preserve order of first appearance)
+    user_columns = []
+    seen_cols = set()
+    for entry in entries:
+        for col_name in entry.extra_columns.keys():
+            if col_name not in seen_cols:
+                user_columns.append(col_name)
+                seen_cols.add(col_name)
+
+    # Build complete fieldnames: POlyglott columns first, then user columns
+    fieldnames = POLYGLOTT_COLUMNS + user_columns
+
     with open(master_path, 'w', encoding='utf-8-sig', newline='') as f:
-        fieldnames = ['msgid', 'msgstr', 'status', 'score', 'context', 'context_sources']
         writer = csv.DictWriter(f, fieldnames=fieldnames, quoting=csv.QUOTE_ALL)
 
         writer.writeheader()
 
         for entry in entries:
-            writer.writerow({
+            # Start with POlyglott columns
+            row = {
                 'msgid': entry.msgid,
                 'msgstr': entry.msgstr,
                 'status': entry.status,
                 'score': entry.score,
                 'context': entry.context,
-                'context_sources': entry.context_sources
-            })
+                'context_sources': entry.context_sources,
+                'candidate': entry.candidate,
+            }
+
+            # Add user columns (empty string if entry doesn't have this column)
+            for col_name in user_columns:
+                row[col_name] = entry.extra_columns.get(col_name, '')
+
+            writer.writerow(row)
