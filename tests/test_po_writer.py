@@ -382,7 +382,7 @@ class TestVerboseOutput:
             result = export_to_po(master, str(po_path), {"accepted"}, verbose=True)
 
             assert any("OVERWRITE" in detail and "Old Translation" in detail and "New Translation" in detail
-                      for detail in result.details)
+                       for detail in result.details)
 
 
 class TestFullPathsInOutput:
