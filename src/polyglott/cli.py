@@ -559,16 +559,18 @@ def cmd_translate(args: argparse.Namespace) -> int:
         if glossary_terms:
             backend.create_glossary(glossary_terms, source_lang, target_lang)
 
-        # Translate entries
+        # Translate entries with routing logic (msgstr vs candidate)
         translated_count = 0
         passthrough_count = 0
+        msgstr_writes = 0  # Wrote to msgstr (was empty)
+        candidate_writes = 0  # Wrote to candidate (msgstr existed)
         error_count = 0
 
         try:
             for entry in entries_to_translate:
                 try:
-                    # Translate msgid to msgstr
-                    msgstr = backend.translate_entry(
+                    # Translate msgid
+                    translated = backend.translate_entry(
                         entry.msgid,
                         source_lang=source_lang,
                         target_lang=target_lang,
@@ -576,13 +578,24 @@ def cmd_translate(args: argparse.Namespace) -> int:
                         glossary_entries=glossary_terms
                     )
 
-                    # Update entry
-                    entry.msgstr = msgstr
-                    entry.status = 'machine'
-                    entry.score = ''  # Clear score for machine translations
+                    # Routing logic: where to write the translation?
+                    msgstr_current = entry.msgstr.strip()
 
-                    # Check if passthrough (msgstr == msgid)
-                    if msgstr == entry.msgid:
+                    if not msgstr_current:
+                        # Empty msgstr → write directly, set status to machine
+                        entry.msgstr = translated
+                        entry.status = 'machine'
+                        entry.score = ''
+                        entry.candidate = ''  # Clear candidate
+                        msgstr_writes += 1
+                    else:
+                        # Existing msgstr → write to candidate, preserve status
+                        entry.candidate = translated
+                        # msgstr, status, score unchanged
+                        candidate_writes += 1
+
+                    # Check if passthrough (result == msgid)
+                    if translated == entry.msgid:
                         passthrough_count += 1
                     else:
                         translated_count += 1
@@ -597,12 +610,16 @@ def cmd_translate(args: argparse.Namespace) -> int:
             save_master(master_entries, args.master)
             backend.delete_glossary()
 
-        # Print summary
+        # Print summary with routing breakdown
         total_processed = translated_count + passthrough_count
         print(f"\nTranslation complete:", file=sys.stderr)
-        print(f"  Source language: {source_lang}", file=sys.stderr)
-        print(f"  Target language: {target_lang}", file=sys.stderr)
+        print(f"  Source language: {source_lang.upper()}", file=sys.stderr)
+        print(f"  Target language: {target_lang.upper()}", file=sys.stderr)
         print(f"  Entries translated: {translated_count}", file=sys.stderr)
+        if msgstr_writes > 0:
+            print(f"    → msgstr (was empty): {msgstr_writes}", file=sys.stderr)
+        if candidate_writes > 0:
+            print(f"    → candidate (msgstr existed): {candidate_writes}", file=sys.stderr)
         print(f"  Passthrough entries: {passthrough_count}", file=sys.stderr)
         if error_count > 0:
             print(f"  Errors: {error_count}", file=sys.stderr)
@@ -632,18 +649,22 @@ def _dry_run_translate(entries: List, target_lang: str, source_lang: str) -> int
     """
     from polyglott.translate import DeepLBackend
 
-    # Estimate character count
-    msgids = [e.msgid for e in entries]
+    # Analyze routing: will write to msgstr or candidate?
+    will_write_msgstr = [e for e in entries if not e.msgstr.strip()]
+    will_write_candidate = [e for e in entries if e.msgstr.strip()]
 
-    # Create a temporary backend instance just for estimation (no API key needed)
-    # We'll just calculate manually instead
-    total_chars = sum(len(msgid) for msgid in msgids)
+    # Estimate character count
+    total_chars = sum(len(e.msgid) for e in entries)
 
     print(f"Dry run — no API calls will be made.\n", file=sys.stderr)
     print(f"Entries to translate: {len(entries)}", file=sys.stderr)
-    print(f"Estimated characters: {total_chars:,}", file=sys.stderr)
-    print(f"Source language: {source_lang}", file=sys.stderr)
-    print(f"Target language: {target_lang}", file=sys.stderr)
+    if will_write_msgstr:
+        print(f"  → will write to msgstr (currently empty): {len(will_write_msgstr)}", file=sys.stderr)
+    if will_write_candidate:
+        print(f"  → will write to candidate (msgstr exists): {len(will_write_candidate)}", file=sys.stderr)
+    print(f"\nEstimated characters: {total_chars:,}", file=sys.stderr)
+    print(f"Source language: {source_lang.upper()}", file=sys.stderr)
+    print(f"Target language: {target_lang.upper()}", file=sys.stderr)
     print(f"\nNote: DeepL pricing is based on source text character count.", file=sys.stderr)
     print(f"See https://www.deepl.com/pro-api for current rates.", file=sys.stderr)
 
