@@ -35,6 +35,9 @@ dev = [
     "pytest>=7.4.0",
     "bump-my-version>=0.15.0",
 ]
+deepl = [
+    "deepl>=1.16.0",
+]
 
 [project.scripts]
 polyglott = "polyglott.cli:main"
