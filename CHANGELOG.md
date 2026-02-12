@@ -7,9 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-02-12
+
+### Added
+
+- `translate` subcommand for machine translation via DeepL API
+- Strategy C placeholder protection using XML tags with `ignore_tags="x"` for correct word order
+- `--auth-key` flag for DeepL API authentication (or use `DEEPL_AUTH_KEY` environment variable)
+- `--status` flag to specify which entry statuses to translate (default: empty)
+- `--dry-run` flag to estimate translation cost without API calls
+- Automatic status transition from empty/rejected → machine after translation
+- Passthrough detection for non-translatable strings (OK, N/A, placeholder-only, punctuation)
+- HTML entity protection to prevent mistranslation of &amp;, &lt;, &gt;, etc.
+- Multiline translation with line-by-line processing to preserve formatting
+- Ephemeral glossary support for protecting key terms during translation
+- Spacing normalization post-processor for consistent placeholder formatting
+- Graceful error handling with progress saving on quota exceeded or network failures
+- Optional `deepl` dependency group installable via `pip install "polyglott[deepl]"`
+- Character count estimation for cost planning in dry-run mode
+
 ## [0.5.2] - 2026-02-12
 
 ### Fixed
+
 - Export counter now properly distinguishes write/overwrite/skip states - running export twice on unchanged files correctly reports 0 writes on the second run
 - Fixed hardcoded version assertion in CLI tests to use dynamic import
 

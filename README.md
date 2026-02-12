@@ -10,6 +10,7 @@ A tool for parsing gettext PO files and exporting them to CSV for translation wo
 - **Glossary Support**: Enforce translation consistency with YAML glossary files
 - **Master CSV Workflow**: Centralized translation registry with status tracking and conflict detection
 - **Import/Export**: Bidirectional sync between PO files and master CSV
+- **Machine Translation**: DeepL API integration with sophisticated placeholder protection
 - **Multi-file Support**: Process multiple PO files with glob patterns
 - **Unicode Support**: Full support for international characters, emoji, and multi-byte scripts
 - **Flexible Sorting**: Sort output by any field (msgid, msgstr, fuzzy status, etc.)
@@ -485,6 +486,109 @@ The merge workflow implements these status transitions:
 - Score preservation: existing scores never overwritten (human decisions)
 - Context refresh: always recomputed from current PO files
 - Plurals and msgctxt: currently ignored in master CSV (v0.4.0 scope)
+
+### Translate Command
+
+Machine-translate entries in the master CSV using DeepL API. This provides fast first drafts for human review, accelerating the workflow from empty → machine → review → accepted.
+
+#### Installation
+
+Install POlyglott with DeepL support:
+
+```bash
+pip install -e ".[dev,deepl]"
+```
+
+#### Basic Usage
+
+Get a DeepL API key at https://www.deepl.com/pro-api, then:
+
+```bash
+# Via command-line flag
+polyglott translate --master master-de.csv --auth-key YOUR-API-KEY
+
+# Or via environment variable (recommended)
+export DEEPL_AUTH_KEY=YOUR-API-KEY
+polyglott translate --master master-de.csv
+```
+
+#### Translation Options
+
+**Dry run** - Estimate cost without making API calls:
+
+```bash
+polyglott translate --master master-de.csv --dry-run
+```
+
+**Status filtering** - Choose which entries to translate (default: empty):
+
+```bash
+# Translate both empty and rejected entries
+polyglott translate --master master-de.csv --status empty --status rejected
+```
+
+**Glossary protection** - Protect key terms during translation:
+
+```bash
+polyglott translate --master master-de.csv --glossary glossary-de.yaml
+```
+
+**Language override** - Specify target language explicitly:
+
+```bash
+polyglott translate --master translations.csv --lang de
+```
+
+#### How It Works
+
+The translate subcommand:
+
+1. Filters master CSV by status (default: `empty`)
+2. Sends entries to DeepL API with sophisticated placeholder protection
+3. Updates `msgstr` with translation, sets `status='machine'`, clears `score`
+4. Saves progress continuously (survives quota exceeded or network errors)
+5. Creates ephemeral glossary if `--glossary` provided
+
+**Placeholder Protection (Strategy C):**
+- Wraps `%(name)s` and `{count}` in XML tags before sending to DeepL
+- Uses `tag_handling="xml"` with `ignore_tags="x"` API parameters
+- DeepL preserves placeholder content verbatim AND repositions for correct word order
+- Tested against 25 real Django admin translations with 48% exact match rate
+
+**Special Handling:**
+- **Passthrough strings**: OK, N/A, whitespace, punctuation-only, placeholder-only → copied as-is
+- **HTML entities**: &amp;, &lt;, &gt; decoded before translation, re-encoded after
+- **Multiline**: Each line translated separately to preserve formatting
+- **Spacing**: Post-processor normalizes spacing around placeholders
+
+#### Data Privacy
+
+DeepL API processes your translation data on their servers. Review DeepL's privacy policy before use:
+- https://www.deepl.com/privacy
+- https://www.deepl.com/pro-api/terms
+
+Machine translations are marked with `status='machine'` for human review workflow.
+
+#### Translation Workflow
+
+```bash
+# 1. Import PO files
+polyglott import --master master-de.csv locale/de/LC_MESSAGES/*.po
+
+# 2. Machine-translate empty entries
+polyglott translate --master master-de.csv --glossary glossary-de.yaml
+
+# 3. Review translations in CSV editor
+#    - Check machine translations (status='machine')
+#    - Edit msgstr if needed
+#    - Change status to 'accepted' or 'rejected'
+
+# 4. Export accepted translations to PO files
+polyglott export --master master-de.csv --status accepted locale/de/LC_MESSAGES/*.po
+
+# 5. Export machine translations with fuzzy flag for review
+polyglott export --master master-de.csv --status machine locale/de/LC_MESSAGES/*.po
+```
 
 ### Examples
 
