@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-02-12
+
+### Added
+
+- `import` subcommand for importing PO file translations into master CSV
+- `export` subcommand for writing master CSV translations back to PO files
+- Flexible master CSV naming with language inference from `-<lang>.csv` suffix (e.g., `master-de.csv`, `help-pages-de.csv`)
+- `--lang` flag for explicit language override on import and export
+- `--status` flag for export to filter which translation statuses to write (default: accepted)
+- `--dry-run` flag for export to preview changes without modifying PO files
+- `--verbose` / `-v` flag for export to show per-entry detail
+- Automatic fuzzy flag management on export (clear for accepted, set for machine, preserve for review)
+- Bidirectional PO file sync workflow (import → review → export)
+- Support for multi-part language codes (en-us, pt-br, zh-hans)
+
+### Changed
+
+- Restored `scan` subcommand to Stage 3 behavior (single file, per-file CSV export only)
+- Master CSV operations now use dedicated `import` subcommand instead of `scan --master`
+- All console output now uses full file paths (not basenames) for clarity
+
+### Removed
+
+- `--master` flag from `scan` subcommand (use `import` instead)
+- `--include` and `--exclude` flags from `scan` (use `import` for multi-file operations)
+- Strict `polyglott-accepted-<lang>.csv` filename requirement (now accepts any `*-<lang>.csv` pattern)
+
+### Migration Guide
+
+- Old: `polyglott scan --master polyglott-accepted-de.csv locale/de/LC_MESSAGES/*.po`
+- New: `polyglott import polyglott-accepted-de.csv locale/de/LC_MESSAGES/*.po`
+
 ## [0.4.0] - 2026-02-11
 
 ### Added

@@ -385,6 +385,70 @@ def _create_new_entry(
     )
 
 
+def infer_language(master_csv_path: str, lang_override: Optional[str] = None) -> str:
+    """Infer target language from master CSV filename.
+
+    Language is inferred from the -<lang>.csv suffix:
+    - master-de.csv → de
+    - polyglott-accepted-de.csv → de
+    - help-pages-de.csv → de
+    - myproject-en-us.csv → en-us
+
+    Args:
+        master_csv_path: Path to master CSV file
+        lang_override: Optional explicit language override
+
+    Returns:
+        Language code (e.g., 'de', 'en-us')
+
+    Raises:
+        ValueError: If language cannot be inferred and no override provided
+    """
+    # If explicit override, use it
+    if lang_override:
+        return lang_override
+
+    # Extract filename
+    filename = Path(master_csv_path).name
+
+    # Must end with .csv
+    if not filename.endswith('.csv'):
+        raise ValueError(
+            f"Cannot infer target language from '{filename}'.\n"
+            f"Use a filename ending in '-<lang>.csv' (e.g., 'translations-de.csv')\n"
+            f"or specify --lang explicitly."
+        )
+
+    # Remove .csv suffix
+    stem = filename[:-4]
+
+    # Try to match language patterns from the end
+    # Language codes can be:
+    # - Simple: de, en, fr (2-3 letters)
+    # - Complex: en-us, pt-br, zh-hans (2-3 letters, hyphen, 2-4 letters)
+    import re
+
+    # Try complex pattern first (e.g., en-us, zh-hans)
+    complex_match = re.search(r'-([a-z]{2,3}-[a-z]{2,4})$', stem)
+    if complex_match:
+        return complex_match.group(1)
+
+    # Try simple pattern (e.g., de, fr)
+    simple_match = re.search(r'-([a-z]{2,3})$', stem)
+    if simple_match:
+        return simple_match.group(1)
+
+    # Special case: the entire filename is just the language code (e.g., de.csv)
+    if re.match(r'^[a-z]{2,3}(-[a-z]{2,4})?$', stem):
+        return stem
+
+    raise ValueError(
+        f"Cannot infer target language from '{filename}'.\n"
+        f"Use a filename ending in '-<lang>.csv' (e.g., 'translations-de.csv')\n"
+        f"or specify --lang explicitly."
+    )
+
+
 def load_master(path: str) -> Dict[str, MasterEntry]:
     """Load existing master CSV into dictionary.
 
