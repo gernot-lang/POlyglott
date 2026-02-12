@@ -40,9 +40,12 @@ Use the venv's bump-my-version (not system Python):
 ```bash
 polyglott --version
 polyglott scan <po-file> -o output.csv
+polyglott lint --include "**/*.po" --glossary glossary.yaml
+polyglott import --master master-de.csv --include "locale/de/**/*.po"
+polyglott export --master master-de.csv --include "locale/de/**/*.po" --dry-run
 ```
 
-> **Note:** CLI commands grow with each stage. See stage prompts in `prompts/` for details.
+> **Note:** Run `polyglott <subcommand> --help` for full flag details. CLI flags grow with each stage — see stage prompts in `prompts/` for specifications.
 
 ## Architecture
 
@@ -54,7 +57,12 @@ src/polyglott/
 ├── __main__.py      # Support for python -m polyglott
 ├── cli.py           # CLI entry point (argparse)
 ├── parser.py        # PO file parsing (polib)
-└── exporter.py      # CSV export (pandas)
+├── exporter.py      # CSV export (pandas)
+├── linter.py        # PO quality checks
+├── formatter.py     # Output formatting
+├── context.py       # Context inference from source references
+├── master.py        # Master CSV creation, merge, deduplication
+└── po_writer.py     # Export master CSV translations back to PO files
 ```
 
 > **Note:** Modules are added per stage. Each stage prompt specifies new modules.
@@ -109,34 +117,41 @@ git checkout -b feature/feature-name
 git add .
 git commit -m "feat(parser): add PO file parsing with metadata extraction"
 
-# 3. When feature is complete, merge to develop (no squash, no fast-forward)
+# 3. When feature is complete, run verification gate (see Pre-Merge Verification Gate)
+polyglott scan --help
+polyglott import --help
+polyglott export --help
+polyglott lint --help
+# Verify all --help output matches stage spec. Fix discrepancies before merging.
+
+# 4. Merge to develop (no squash, no fast-forward)
 git checkout develop
 git merge --no-ff feature/feature-name
 
-# 4. Bump version on develop
+# 5. Bump version on develop
 .venv/bin/bump-my-version bump minor
 
-# 5. Update CHANGELOG.md (move Unreleased items to version section with date)
+# 6. Update CHANGELOG.md (move Unreleased items to version section with date)
 git add CHANGELOG.md
 git commit -m "docs: update CHANGELOG for vX.Y.0"
 
-# 6. Merge develop to main
+# 7. Merge develop to main
 git checkout main
 git merge --no-ff develop
 
-# 7. VERIFY you're on main before tagging
+# 8. VERIFY you're on main before tagging
 git branch --show-current  # MUST show "main"
 
-# 8. Create annotated tag on main
+# 9. Create annotated tag on main
 git tag -a vX.Y.0 -m "Short description of what this release delivers"
 
 # VERIFY THE TAG:
 git show vX.Y.0 --no-patch --format="%d %s"
 
-# 9. Push everything
+# 10. Push everything
 git push origin main develop --tags
 
-# 10. Delete feature branch
+# 11. Delete feature branch
 git branch -d feature/feature-name
 ```
 
@@ -226,6 +241,36 @@ git branch -d fix/description
 - **TDD is mandatory** — test must reproduce bug before fixing
 - **CHANGELOG must be updated** — document the fix for users
 
+### Pre-Merge Verification Gate
+
+**MANDATORY before version bump, merge to main, and tagging.** This catches spec-vs-reality drift in both directions — flags the spec promised but code didn't implement, and flags code added that the spec didn't describe.
+
+```bash
+# 1. Capture actual CLI state
+polyglott scan --help
+polyglott import --help
+polyglott export --help
+polyglott lint --help
+
+# 2. Verify against stage spec
+# For each subcommand, confirm:
+# - All spec'd flags are present
+# - No unexpected flags appeared
+# - Flag choices/defaults match spec
+# - Positional arguments match spec
+# - Required vs optional matches spec
+
+# 3. Run full test suite
+pytest
+
+# 4. Verify no regressions in existing subcommands
+# - Do subcommands that should be unchanged still match their pre-stage --help output?
+```
+
+**If any discrepancy is found:** fix code or update spec before proceeding. Never merge with known spec-vs-reality drift.
+
+**For stage spec authors:** always capture `--help` output from the actual CLI as the baseline before writing the spec. Never derive flag inventories from earlier stage documents alone.
+
 ### Key Rules
 
 - **No squash merges** — preserve commit history, use `--no-ff` everywhere
@@ -236,6 +281,7 @@ git branch -d fix/description
 - **Never delete `main` or `develop`** — only delete feature/* and fix/* branches
 - **Never commit directly to `main` or `develop`** — always use a branch
 - **Always use `.venv/bin/bump-my-version`** — never the system-installed version
+- **Always run verification gate** — before merging any feature or fix branch
 
 ### Commit Messages
 
@@ -258,7 +304,9 @@ chore: description           # Maintenance
 | 2     | v0.2.0  | Lint subcommand with glossary            | `feature/lint`              |
 | 3     | v0.3.0  | Context inference from source references | `feature/context-inference` |
 | 4     | v0.4.0  | Translation master CSV                   | `feature/master-csv`        |
-| 5     | v0.5.0  | DeepL integration                        | `feature/deepl`             |
+| 5     | v0.5.0  | Import/export subcommands, scan restore  | `feature/import-export`     |
+| 5.1   | v0.5.1  | CLI harmonization, parent parsers        | `feature/cli-harmonization` |
+| 6     | v0.6.0  | DeepL integration                        | `feature/deepl`             |
 
 See `prompts/stageX.md` for detailed specifications.
 
