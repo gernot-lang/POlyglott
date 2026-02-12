@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-02-12
+
+### Added
+
+- `candidate` column in master CSV for non-destructive machine translation suggestions
+- Column sovereignty: user-added columns are now preserved across all operations (import, translate, export)
+- Translation routing: `translate` writes to `msgstr` when empty, `candidate` when msgstr already exists
+
+### Changed
+
+- Master CSV now supports arbitrary user-added columns beyond POlyglott's reserved columns
+- `translate` subcommand summary shows routing breakdown (msgstr vs candidate writes)
+- Dry-run output shows where translations will be written based on current msgstr state
+- Master CSV column order: POlyglott columns first, user columns after (maintains stable ordering)
+
 ## [0.6.2] - 2026-02-12
 
 ### Fixed

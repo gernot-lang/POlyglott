@@ -285,16 +285,22 @@ Available sort fields: `msgid`, `source_file`, `fuzzy`, `msgstr`
 
 #### Master CSV Schema
 
-The master CSV has a fixed schema optimized for translation management:
+The master CSV has reserved POlyglott columns and supports user-added columns:
 
-| Column            | Description                                      |
-|-------------------|--------------------------------------------------|
-| `msgid`           | Source text (deduplication key)                  |
-| `msgstr`          | Translation text                                 |
-| `status`          | Translation status (see below)                   |
-| `score`           | Quality score (empty or "10" for glossary match) |
-| `context`         | Inferred UI context                              |
-| `context_sources` | Disambiguation info (when ambiguous)             |
+**POlyglott Reserved Columns:**
+
+| Column            | Description                                             |
+|-------------------|---------------------------------------------------------|
+| `msgid`           | Source text (deduplication key)                         |
+| `msgstr`          | Translation text                                        |
+| `status`          | Translation status (see below)                          |
+| `score`           | Quality score (empty or "10" for glossary match)        |
+| `context`         | Inferred UI context                                     |
+| `context_sources` | Disambiguation info (when ambiguous)                    |
+| `candidate`       | Machine translation suggestion (when msgstr has content)|
+
+**Column Sovereignty:**
+You can add your own columns (e.g., `notes`, `reviewer`, `priority`, `client_approved`) and POlyglott will preserve them across all operations (import, translate, export). User columns are never modified, only preserved. Column order: POlyglott columns first, then user columns in their original order.
 
 #### Status Values
 
@@ -545,9 +551,17 @@ The translate subcommand:
 
 1. Filters master CSV by status (default: `empty`)
 2. Sends entries to DeepL API with sophisticated placeholder protection
-3. Updates `msgstr` with translation, sets `status='machine'`, clears `score`
+3. **Smart routing** - writes translation based on current `msgstr` state:
+   - If `msgstr` is empty → writes to `msgstr`, sets `status='machine'`, clears `candidate`
+   - If `msgstr` has content → writes to `candidate`, preserves `status` (non-destructive)
 4. Saves progress continuously (survives quota exceeded or network errors)
 5. Creates ephemeral glossary if `--glossary` provided
+
+**Non-Destructive Translation:**
+The `candidate` column stores machine translation suggestions when `msgstr` already has content. This allows you to:
+- Compare existing translation with fresh machine suggestion
+- Re-translate entries without losing the previous attempt
+- Review machine suggestions alongside human translations
 
 **Placeholder Protection (Strategy C):**
 - Wraps `%(name)s` and `{count}` in XML tags before sending to DeepL
