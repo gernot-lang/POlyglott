@@ -23,7 +23,7 @@ class TestCLI:
         )
 
         assert result.returncode == 0
-        assert "0.3.3" in result.stdout
+        assert "0.4.0" in result.stdout
 
     def test_scan_single_file_to_stdout(self):
         """Test scanning a single file to stdout."""
@@ -73,43 +73,46 @@ class TestCLI:
             Path(output_file).unlink()
 
     def test_scan_with_glob_patterns(self):
-        """Test scanning multiple files with --include."""
-        result = subprocess.run(
-            [
-                sys.executable, "-m", "polyglott", "scan",
-                "--include", str(FIXTURES_DIR / "*.po"),
-                "--exclude", str(FIXTURES_DIR / "malformed.po")
-            ],
-            capture_output=True,
-            text=True
-        )
+        """Test scanning multiple files now uses import subcommand (Stage 5)."""
+        from tempfile import TemporaryDirectory
 
-        assert result.returncode == 0
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
 
-        # Should process multiple files
-        assert "Files processed:" in result.stderr
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    str(master_path),
+                    str(FIXTURES_DIR / "*.po"),
+                    "--exclude", str(FIXTURES_DIR / "malformed.po")
+                ],
+                capture_output=True,
+                text=True
+            )
 
-        # Check CSV has source_file column
-        lines = result.stdout.strip().split('\n')
-        header = lines[0]
-        assert "source_file" in header
+            assert result.returncode == 0
+            assert master_path.exists()
 
     def test_scan_with_exclusions(self):
-        """Test --exclude patterns."""
-        result = subprocess.run(
-            [
-                sys.executable, "-m", "polyglott", "scan",
-                "--include", str(FIXTURES_DIR / "*.po"),
-                "--exclude", str(FIXTURES_DIR / "malformed.po")
-            ],
-            capture_output=True,
-            text=True
-        )
+        """Test exclusion patterns now use import subcommand (Stage 5)."""
+        from tempfile import TemporaryDirectory
 
-        assert result.returncode == 0
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
 
-        # Should succeed (no malformed file processed)
-        assert "Files processed:" in result.stderr
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    str(master_path),
+                    str(FIXTURES_DIR / "*.po"),
+                    "--exclude", str(FIXTURES_DIR / "malformed.po")
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+            assert "Total entries:" in result.stderr
 
     def test_scan_with_sorting(self):
         """Test --sort-by option."""
@@ -146,18 +149,19 @@ class TestCLI:
         assert "not found" in result.stderr.lower()
 
     def test_scan_no_args(self):
-        """Test error when no file or --include specified."""
+        """Test error when no file specified (Stage 3 behavior)."""
         result = subprocess.run(
             [sys.executable, "-m", "polyglott", "scan"],
             capture_output=True,
             text=True
         )
 
-        assert result.returncode == 1
-        assert "Must specify either FILE or --include" in result.stderr
+        # argparse error (missing required argument)
+        assert result.returncode == 2
+        assert "required: file" in result.stderr
 
     def test_scan_conflicting_args(self):
-        """Test error when both file and --include are specified."""
+        """Test that scan no longer accepts --include (Stage 3 behavior)."""
         result = subprocess.run(
             [
                 sys.executable, "-m", "polyglott", "scan",
@@ -168,8 +172,9 @@ class TestCLI:
             text=True
         )
 
-        assert result.returncode == 1
-        assert "Cannot specify both" in result.stderr
+        # argparse error (unrecognized argument)
+        assert result.returncode == 2
+        assert "unrecognized arguments" in result.stderr
 
     def test_unicode_preservation(self):
         """Test that Unicode is preserved in CSV output."""
@@ -720,3 +725,427 @@ class TestContextInference:
             text=True
         )
         assert result.returncode in [0, 1, 2]
+
+
+class TestImportSubcommand:
+    """Test suite for import subcommand (Stage 5)."""
+
+    def test_import_creates_new_master(self):
+        """Test import subcommand creates new master CSV."""
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    str(master_path),
+                    str(FIXTURES_DIR / "master" / "django.po")
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+            assert master_path.exists()
+            assert "Language: de" in result.stderr
+            assert "Total entries:" in result.stderr
+
+    def test_import_updates_existing_master(self):
+        """Test import updates existing master CSV."""
+        from tempfile import TemporaryDirectory
+        import shutil
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+            shutil.copy(FIXTURES_DIR / "master" / "master_existing.csv", master_path)
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    str(master_path),
+                    str(FIXTURES_DIR / "master" / "*.po")
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+
+    def test_import_with_context_rules(self):
+        """Test import with context rules."""
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+            rules_path = Path(tmpdir) / "rules.yaml"
+            rules_path.write_text("""rules:
+  - pattern: 'forms.py'
+    context: 'form_label'
+""")
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    str(master_path),
+                    str(FIXTURES_DIR / "master" / "django.po"),
+                    "--context-rules", str(rules_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+
+    def test_import_with_glossary(self):
+        """Test import with glossary scoring."""
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    str(master_path),
+                    str(FIXTURES_DIR / "master" / "django.po"),
+                    "--glossary", str(FIXTURES_DIR / "master" / "glossary_de.yaml")
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+
+    def test_import_language_inference(self):
+        """Test language inference from filename."""
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "polyglott-accepted-de.csv"
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    str(master_path),
+                    str(FIXTURES_DIR / "master" / "django.po")
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+            assert "Language: de" in result.stderr
+
+    def test_import_lang_override(self):
+        """Test --lang override."""
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "translations.csv"
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    str(master_path),
+                    str(FIXTURES_DIR / "master" / "django.po"),
+                    "--lang", "de"
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+            assert "Language: de" in result.stderr
+
+    def test_import_no_lang_error(self):
+        """Test error when language cannot be inferred."""
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "translations.csv"
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    str(master_path),
+                    str(FIXTURES_DIR / "master" / "django.po")
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 1
+            assert "Cannot infer target language" in result.stderr
+
+    def test_import_no_po_files_error(self):
+        """Test error when no PO files specified."""
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    str(master_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode != 0
+
+
+class TestExportSubcommand:
+    """Test suite for export subcommand (Stage 5)."""
+
+    def test_export_accepted_to_po(self):
+        """Test export writes accepted translations to PO files."""
+        from tempfile import TemporaryDirectory
+        import polib
+
+        with TemporaryDirectory() as tmpdir:
+            # Create master CSV with accepted entry
+            master_path = Path(tmpdir) / "master-de.csv"
+            with open(master_path, 'w', encoding='utf-8-sig', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=['msgid', 'msgstr', 'status', 'score', 'context', 'context_sources'])
+                writer.writeheader()
+                writer.writerow({
+                    'msgid': 'Username',
+                    'msgstr': 'Benutzername',
+                    'status': 'accepted',
+                    'score': '10',
+                    'context': '',
+                    'context_sources': ''
+                })
+
+            # Create PO file
+            po_path = Path(tmpdir) / "django.po"
+            po = polib.POFile()
+            po.append(polib.POEntry(msgid="Username", msgstr=""))
+            po.save(str(po_path))
+
+            # Export
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "export",
+                    str(master_path),
+                    str(po_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+            assert "Updated 1 entries" in result.stdout
+
+            # Verify PO file was updated
+            po_loaded = polib.pofile(str(po_path))
+            entry = po_loaded.find("Username")
+            assert entry.msgstr == "Benutzername"
+            assert "fuzzy" not in entry.flags
+
+    def test_export_dry_run(self):
+        """Test export --dry-run doesn't modify files."""
+        from tempfile import TemporaryDirectory
+        import polib
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+            with open(master_path, 'w', encoding='utf-8-sig', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=['msgid', 'msgstr', 'status', 'score', 'context', 'context_sources'])
+                writer.writeheader()
+                writer.writerow({
+                    'msgid': 'Username',
+                    'msgstr': 'Benutzername',
+                    'status': 'accepted',
+                    'score': '',
+                    'context': '',
+                    'context_sources': ''
+                })
+
+            po_path = Path(tmpdir) / "django.po"
+            po = polib.POFile()
+            po.append(polib.POEntry(msgid="Username", msgstr=""))
+            po.save(str(po_path))
+
+            # Export with dry-run
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "export",
+                    str(master_path),
+                    str(po_path),
+                    "--dry-run"
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+            assert "Dry run" in result.stdout
+            assert "Would update" in result.stdout
+
+            # Verify PO file was NOT modified
+            po_loaded = polib.pofile(str(po_path))
+            entry = po_loaded.find("Username")
+            assert entry.msgstr == ""
+
+    def test_export_verbose(self):
+        """Test export -v shows per-entry details."""
+        from tempfile import TemporaryDirectory
+        import polib
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+            with open(master_path, 'w', encoding='utf-8-sig', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=['msgid', 'msgstr', 'status', 'score', 'context', 'context_sources'])
+                writer.writeheader()
+                writer.writerow({
+                    'msgid': 'Username',
+                    'msgstr': 'Benutzername',
+                    'status': 'accepted',
+                    'score': '',
+                    'context': '',
+                    'context_sources': ''
+                })
+
+            po_path = Path(tmpdir) / "django.po"
+            po = polib.POFile()
+            po.append(polib.POEntry(msgid="Username", msgstr=""))
+            po.save(str(po_path))
+
+            # Export with verbose
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "export",
+                    str(master_path),
+                    str(po_path),
+                    "-v"
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+            assert "WRITE" in result.stdout
+            assert "Username" in result.stdout
+
+    def test_export_status_filtering(self):
+        """Test export with --status filtering."""
+        from tempfile import TemporaryDirectory
+        import polib
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+            with open(master_path, 'w', encoding='utf-8-sig', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=['msgid', 'msgstr', 'status', 'score', 'context', 'context_sources'])
+                writer.writeheader()
+                writer.writerow({
+                    'msgid': 'Username',
+                    'msgstr': 'Benutzername',
+                    'status': 'machine',
+                    'score': '',
+                    'context': '',
+                    'context_sources': ''
+                })
+
+            po_path = Path(tmpdir) / "django.po"
+            po = polib.POFile()
+            po.append(polib.POEntry(msgid="Username", msgstr=""))
+            po.save(str(po_path))
+
+            # Export with machine status
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "export",
+                    str(master_path),
+                    str(po_path),
+                    "--status", "machine"
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+            assert "Updated 1 entries" in result.stdout
+
+            # Verify fuzzy flag was set
+            po_loaded = polib.pofile(str(po_path))
+            entry = po_loaded.find("Username")
+            assert entry.msgstr == "Benutzername"
+            assert "fuzzy" in entry.flags
+
+    def test_export_no_master_error(self):
+        """Test error when master CSV doesn't exist."""
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "nonexistent-de.csv"
+            po_path = Path(tmpdir) / "django.po"
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "export",
+                    str(master_path),
+                    str(po_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 1
+            assert "not found" in result.stderr
+
+
+class TestScanRestoration:
+    """Test suite for scan restoration to Stage 3 behavior (Stage 5)."""
+
+    def test_scan_single_file_only(self):
+        """Test scan works with single file (Stage 3 behavior)."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "polyglott", "scan",
+                str(FIXTURES_DIR / "simple.po")
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        assert result.returncode == 0
+        assert "Total entries:" in result.stderr
+
+    def test_scan_no_master_flag(self):
+        """Test that scan no longer accepts --master flag."""
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "scan",
+                    str(FIXTURES_DIR / "simple.po"),
+                    "--master", str(master_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            # Should fail with unrecognized argument
+            assert result.returncode != 0
+
+    def test_scan_no_multi_file(self):
+        """Test that scan no longer accepts --include."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "polyglott", "scan",
+                "--include", str(FIXTURES_DIR / "*.po")
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        # Should fail - must specify FILE
+        assert result.returncode != 0

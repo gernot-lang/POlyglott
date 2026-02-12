@@ -215,24 +215,6 @@ def cmd_scan(args: argparse.Namespace) -> int:
         Exit code (0 for success, 1 for error)
     """
     try:
-        # Validate master CSV arguments
-        if hasattr(args, 'master') and args.master:
-            # Check mutual exclusivity with --output
-            if args.output:
-                print("Error: Cannot specify both --master and -o/--output", file=sys.stderr)
-                return 1
-
-            # Validate filename format
-            import re
-            master_filename = Path(args.master).name
-            if not re.match(r'^polyglott-accepted-[a-z]{2,3}\.csv$', master_filename):
-                print(
-                    f"Error: Master CSV filename must match pattern 'polyglott-accepted-<lang>.csv', "
-                    f"got '{master_filename}'",
-                    file=sys.stderr
-                )
-                return 1
-
         # Load context rules if specified
         try:
             context_rules = load_context_rules_from_args(args)
@@ -240,45 +222,19 @@ def cmd_scan(args: argparse.Namespace) -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
-        # Determine input files
-        if args.file and args.include:
-            print("Error: Cannot specify both FILE and --include", file=sys.stderr)
+        # Single file mode only (Stage 3 behavior)
+        if not args.file:
+            print("Error: Must specify FILE", file=sys.stderr)
             return 1
 
-        if args.file:
-            # Single file mode
-            filepath = args.file
-            if not os.path.exists(filepath):
-                print(f"Error: File not found: {filepath}", file=sys.stderr)
-                return 1
-
-            parser = POParser(filepath)
-            entries = parser.parse()
-            stats = parser.get_statistics()
-            multi_file = False
-
-        elif args.include:
-            # Multi-file mode with glob patterns
-            files = discover_po_files(args.include, args.exclude)
-
-            if not files:
-                print("Error: No PO files found matching patterns", file=sys.stderr)
-                return 1
-
-            # Validate all files exist
-            for filepath in files:
-                if not os.path.exists(filepath):
-                    print(f"Error: File not found: {filepath}", file=sys.stderr)
-                    return 1
-
-            parser = MultiPOParser(files)
-            entries = parser.parse()
-            stats = parser.get_combined_statistics()
-            multi_file = True
-
-        else:
-            print("Error: Must specify either FILE or --include", file=sys.stderr)
+        filepath = args.file
+        if not os.path.exists(filepath):
+            print(f"Error: File not found: {filepath}", file=sys.stderr)
             return 1
+
+        parser = POParser(filepath)
+        entries = parser.parse()
+        stats = parser.get_statistics()
 
         # Compute context for each entry if rules are provided
         context_data = None
@@ -286,52 +242,15 @@ def cmd_scan(args: argparse.Namespace) -> int:
             context_data = {}
             for entry in entries:
                 context, context_sources = match_context(entry.references, context_rules)
-                # Use a tuple of key fields as the dictionary key
-                # This handles plurals correctly (same msgid but different plural_index)
                 entry_key = (entry.msgid, entry.msgctxt, entry.plural_index)
                 context_data[entry_key] = (context, context_sources)
 
-        # Check if master CSV mode
-        if hasattr(args, 'master') and args.master:
-            # Master CSV mode
-            from polyglott.master import load_master, save_master, create_master, merge_master
-
-            # Load glossary if provided
-            glossary = None
-            if hasattr(args, 'glossary') and args.glossary:
-                try:
-                    from polyglott.linter import Glossary
-                    glossary = Glossary(args.glossary)
-                except (FileNotFoundError, ValueError) as e:
-                    print(f"Error loading glossary: {e}", file=sys.stderr)
-                    return 1
-
-            # Check if master exists
-            if Path(args.master).exists():
-                existing = load_master(args.master)
-                result = merge_master(existing, entries, glossary, context_rules)
-            else:
-                result = create_master(entries, glossary, context_rules)
-
-            # Save master CSV
-            save_master(result, args.master)
-
-            # Print statistics to stderr
-            print(f"\nMaster CSV: {args.master}", file=sys.stderr)
-            print(f"  Total entries: {len(result)}", file=sys.stderr)
-
-            status_counts = Counter(e.status for e in result)
-            for status in sorted(status_counts.keys()):
-                print(f"  {status}: {status_counts[status]}", file=sys.stderr)
-
-            return 0
-
-        # Regular export mode
+        # Export to CSV
         export_to_csv(
             entries,
             output_file=args.output,
             sort_by=args.sort_by,
-            multi_file=multi_file,
+            multi_file=False,
             context_data=context_data
         )
 
@@ -342,8 +261,198 @@ def cmd_scan(args: argparse.Namespace) -> int:
         print(f"  Fuzzy: {stats.fuzzy}", file=sys.stderr)
         print(f"  Plurals: {stats.plurals}", file=sys.stderr)
 
-        if multi_file:
-            print(f"  Files processed: {len(files)}", file=sys.stderr)
+        return 0
+
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Unexpected error: {e}", file=sys.stderr)
+        return 1
+
+
+def cmd_import(args: argparse.Namespace) -> int:
+    """Execute the import subcommand.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0 for success, 1 for error)
+    """
+    try:
+        from polyglott.master import (
+            load_master, save_master, create_master, merge_master, infer_language
+        )
+
+        # Validate language
+        try:
+            lang = infer_language(args.master_csv, args.lang if hasattr(args, 'lang') else None)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        # Load context rules if specified
+        try:
+            context_rules = load_context_rules_from_args(args)
+        except (ValueError, FileNotFoundError) as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        # Discover PO files
+        if not args.po_files:
+            print("Error: Must specify at least one PO file", file=sys.stderr)
+            return 1
+
+        files = discover_po_files(args.po_files, args.exclude if hasattr(args, 'exclude') else None)
+
+        if not files:
+            print("Error: No PO files found matching patterns", file=sys.stderr)
+            return 1
+
+        # Validate all files exist
+        for filepath in files:
+            if not os.path.exists(filepath):
+                print(f"Error: File not found: {filepath}", file=sys.stderr)
+                return 1
+
+        # Parse all PO files
+        parser = MultiPOParser(files)
+        entries = parser.parse()
+
+        # Load glossary if provided
+        glossary = None
+        if hasattr(args, 'glossary') and args.glossary:
+            try:
+                from polyglott.linter import Glossary
+                glossary = Glossary(args.glossary)
+            except (FileNotFoundError, ValueError) as e:
+                print(f"Error loading glossary: {e}", file=sys.stderr)
+                return 1
+
+        # Check if master exists
+        if Path(args.master_csv).exists():
+            existing = load_master(args.master_csv)
+            result = merge_master(existing, entries, glossary, context_rules)
+        else:
+            result = create_master(entries, glossary, context_rules)
+
+        # Save master CSV
+        save_master(result, args.master_csv)
+
+        # Print statistics to stderr
+        print(f"\nMaster CSV: {args.master_csv}", file=sys.stderr)
+        print(f"  Language: {lang}", file=sys.stderr)
+        print(f"  Total entries: {len(result)}", file=sys.stderr)
+
+        status_counts = Counter(e.status for e in result)
+        for status in sorted(status_counts.keys()):
+            print(f"  {status}: {status_counts[status]}", file=sys.stderr)
+
+        return 0
+
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Unexpected error: {e}", file=sys.stderr)
+        return 1
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    """Execute the export subcommand.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0 for success, 1 for error)
+    """
+    try:
+        from polyglott.master import load_master, infer_language
+        from polyglott.po_writer import export_to_po
+
+        # Validate language (for informational purposes)
+        try:
+            lang = infer_language(args.master_csv, args.lang if hasattr(args, 'lang') else None)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        # Load master CSV
+        if not Path(args.master_csv).exists():
+            print(f"Error: Master CSV not found: {args.master_csv}", file=sys.stderr)
+            return 1
+
+        master_dict = load_master(args.master_csv)
+        master_entries = list(master_dict.values())
+
+        # Discover PO files
+        if not args.po_files:
+            print("Error: Must specify at least one PO file", file=sys.stderr)
+            return 1
+
+        files = discover_po_files(args.po_files, args.exclude if hasattr(args, 'exclude') else None)
+
+        if not files:
+            print("Error: No PO files found matching patterns", file=sys.stderr)
+            return 1
+
+        # Validate all files exist
+        for filepath in files:
+            if not os.path.exists(filepath):
+                print(f"Error: File not found: {filepath}", file=sys.stderr)
+                return 1
+
+        # Determine which statuses to export
+        statuses = set(args.status) if hasattr(args, 'status') and args.status else {'accepted'}
+
+        # Dry run flag
+        dry_run = args.dry_run if hasattr(args, 'dry_run') else False
+
+        # Verbose flag
+        verbose = args.verbose if hasattr(args, 'verbose') else False
+
+        # Export to each PO file
+        total_writes = 0
+        total_overwrites = 0
+        file_results = []
+
+        for po_file in files:
+            result = export_to_po(
+                master_entries,
+                po_file,
+                statuses,
+                dry_run=dry_run,
+                verbose=verbose
+            )
+
+            total_writes += result.writes
+            total_overwrites += result.overwrites
+            file_results.append((po_file, result))
+
+        # Print verbose details if requested
+        if verbose:
+            for po_file, result in file_results:
+                for detail in result.details:
+                    print(detail)
+            if file_results:
+                print()  # Blank line before summary
+
+        # Print summary
+        if dry_run:
+            print("Dry run — no files will be modified.\n")
+            prefix = "Would update"
+        else:
+            prefix = "Updated"
+
+        total_updated = total_writes + total_overwrites
+        print(f"{prefix} {total_updated} entries across {len(files)} files ({total_overwrites} overwrites)")
+
+        for po_file, result in file_results:
+            updates = result.writes + result.overwrites
+            if updates > 0:
+                print(f"  {po_file}: {updates} writes, {result.overwrites} overwrites")
 
         return 0
 
@@ -377,30 +486,17 @@ def main() -> int:
     # Scan subcommand
     scan_parser = subparsers.add_parser(
         "scan",
-        help="Scan PO file(s) and export to CSV"
+        help="Scan PO file and export to CSV"
     )
 
     scan_parser.add_argument(
         "file",
-        nargs="?",
         help="Path to a single PO file"
     )
 
     scan_parser.add_argument(
         "-o", "--output",
         help="Output CSV file (default: stdout)"
-    )
-
-    scan_parser.add_argument(
-        "--include",
-        action="append",
-        help="Glob pattern(s) for PO files (repeatable, e.g., '**/*.po')"
-    )
-
-    scan_parser.add_argument(
-        "--exclude",
-        action="append",
-        help="Exclude pattern(s) (repeatable)"
     )
 
     scan_parser.add_argument(
@@ -420,13 +516,98 @@ def main() -> int:
     )
 
     scan_parser.add_argument(
-        "--master",
-        help="Path to master CSV (creates or updates, e.g., polyglott-accepted-de.csv)"
+        "--glossary",
+        help="Path to YAML glossary file"
     )
 
-    scan_parser.add_argument(
+    # Import subcommand
+    import_parser = subparsers.add_parser(
+        "import",
+        help="Import PO file translations into master CSV"
+    )
+
+    import_parser.add_argument(
+        "master_csv",
+        help="Path to master CSV file (*-<lang>.csv)"
+    )
+
+    import_parser.add_argument(
+        "po_files",
+        nargs="+",
+        help="One or more PO files or glob patterns"
+    )
+
+    import_parser.add_argument(
         "--glossary",
-        help="Path to YAML glossary file (for master CSV scoring)"
+        help="Path to YAML glossary file (for auto-scoring)"
+    )
+
+    import_parser.add_argument(
+        "--context-rules",
+        help="Path to YAML context rules file"
+    )
+
+    import_parser.add_argument(
+        "--preset",
+        help="Use built-in context preset (e.g., 'django')"
+    )
+
+    import_parser.add_argument(
+        "--lang",
+        help="Override target language (instead of inferring from filename)"
+    )
+
+    import_parser.add_argument(
+        "--exclude",
+        action="append",
+        help="Exclude pattern(s) (repeatable)"
+    )
+
+    # Export subcommand
+    export_parser = subparsers.add_parser(
+        "export",
+        help="Export master CSV translations back to PO files"
+    )
+
+    export_parser.add_argument(
+        "master_csv",
+        help="Path to master CSV file (*-<lang>.csv)"
+    )
+
+    export_parser.add_argument(
+        "po_files",
+        nargs="+",
+        help="One or more PO files or glob patterns"
+    )
+
+    export_parser.add_argument(
+        "--status",
+        action="append",
+        default=None,
+        help="Which statuses to export (repeatable, default: accepted)"
+    )
+
+    export_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would change without modifying PO files"
+    )
+
+    export_parser.add_argument(
+        "--lang",
+        help="Override target language (instead of inferring from filename)"
+    )
+
+    export_parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Show per-entry detail"
+    )
+
+    export_parser.add_argument(
+        "--exclude",
+        action="append",
+        help="Exclude pattern(s) (repeatable)"
     )
 
     # Lint subcommand
@@ -509,6 +690,10 @@ def main() -> int:
         return cmd_scan(args)
     elif args.command == "lint":
         return cmd_lint(args)
+    elif args.command == "import":
+        return cmd_import(args)
+    elif args.command == "export":
+        return cmd_export(args)
     elif args.command is None:
         parser.print_help()
         return 1
