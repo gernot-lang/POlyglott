@@ -488,6 +488,163 @@ def cmd_export(args: argparse.Namespace) -> int:
         return 1
 
 
+def cmd_translate(args: argparse.Namespace) -> int:
+    """Execute the translate subcommand.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Exit code (0 for success, 1 for error)
+    """
+    try:
+        from polyglott.master import load_master, save_master, infer_language, MasterEntry
+        from polyglott.translate import DeepLBackend, TranslationError
+
+        # Validate language
+        try:
+            lang = infer_language(args.master, args.lang if hasattr(args, 'lang') else None)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        # Load master CSV
+        if not Path(args.master).exists():
+            print(f"Error: Master CSV not found: {args.master}", file=sys.stderr)
+            return 1
+
+        master_dict = load_master(args.master)
+        master_entries = list(master_dict.values())
+
+        # Filter by status (default: empty)
+        statuses = set(args.status) if hasattr(args, 'status') and args.status else {'empty'}
+        entries_to_translate = [e for e in master_entries if e.status in statuses]
+
+        if not entries_to_translate:
+            print(f"No entries with status {', '.join(sorted(statuses))} found.", file=sys.stderr)
+            return 0
+
+        # Get auth key from args or environment
+        auth_key = args.auth_key if hasattr(args, 'auth_key') and args.auth_key else os.environ.get('DEEPL_AUTH_KEY')
+        if not auth_key:
+            print("Error: DeepL API key required. Use --auth-key or set DEEPL_AUTH_KEY environment variable.", file=sys.stderr)
+            return 1
+
+        # Dry run mode: estimate cost without API calls
+        if args.dry_run if hasattr(args, 'dry_run') else False:
+            return _dry_run_translate(entries_to_translate, lang)
+
+        # Initialize DeepL backend
+        try:
+            backend = DeepLBackend(auth_key)
+        except TranslationError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return 1
+
+        # Load glossary if provided
+        glossary_terms = None
+        if hasattr(args, 'glossary') and args.glossary:
+            try:
+                from polyglott.linter import Glossary
+                glossary = Glossary(args.glossary)
+                glossary_terms = glossary.terms
+            except (FileNotFoundError, ValueError) as e:
+                print(f"Warning: Failed to load glossary: {e}", file=sys.stderr)
+                print("Continuing without glossary protection.", file=sys.stderr)
+
+        # Create ephemeral glossary if terms available
+        if glossary_terms:
+            # Infer source language (assume English for now)
+            source_lang = 'en'
+            backend.create_glossary(glossary_terms, source_lang, lang)
+
+        # Translate entries
+        translated_count = 0
+        passthrough_count = 0
+        error_count = 0
+
+        try:
+            for entry in entries_to_translate:
+                try:
+                    # Translate msgid to msgstr
+                    msgstr = backend.translate_entry(
+                        entry.msgid,
+                        source_lang='en',  # Assume English source
+                        target_lang=lang,
+                        context=entry.context if hasattr(entry, 'context') else None,
+                        glossary_entries=glossary_terms
+                    )
+
+                    # Update entry
+                    entry.msgstr = msgstr
+                    entry.status = 'machine'
+                    entry.score = ''  # Clear score for machine translations
+
+                    # Check if passthrough (msgstr == msgid)
+                    if msgstr == entry.msgid:
+                        passthrough_count += 1
+                    else:
+                        translated_count += 1
+
+                except TranslationError as e:
+                    print(f"Warning: Failed to translate '{entry.msgid[:50]}...': {e}", file=sys.stderr)
+                    error_count += 1
+                    continue
+
+        finally:
+            # Always save progress and cleanup
+            save_master(master_entries, args.master)
+            backend.delete_glossary()
+
+        # Print summary
+        total_processed = translated_count + passthrough_count
+        print(f"\nTranslation complete:", file=sys.stderr)
+        print(f"  Entries translated: {translated_count}", file=sys.stderr)
+        print(f"  Passthrough entries: {passthrough_count}", file=sys.stderr)
+        if error_count > 0:
+            print(f"  Errors: {error_count}", file=sys.stderr)
+        print(f"  Master CSV updated: {args.master}", file=sys.stderr)
+
+        return 0
+
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Unexpected error: {e}", file=sys.stderr)
+        return 1
+
+
+def _dry_run_translate(entries: List, lang: str) -> int:
+    """
+    Dry-run mode: estimate translation cost without API calls.
+
+    Args:
+        entries: List of MasterEntry objects to translate
+        lang: Target language code
+
+    Returns:
+        Exit code (0 for success)
+    """
+    from polyglott.translate import DeepLBackend
+
+    # Estimate character count
+    msgids = [e.msgid for e in entries]
+
+    # Create a temporary backend instance just for estimation (no API key needed)
+    # We'll just calculate manually instead
+    total_chars = sum(len(msgid) for msgid in msgids)
+
+    print(f"Dry run — no API calls will be made.\n", file=sys.stderr)
+    print(f"Entries to translate: {len(entries)}", file=sys.stderr)
+    print(f"Estimated characters: {total_chars:,}", file=sys.stderr)
+    print(f"Target language: {lang}", file=sys.stderr)
+    print(f"\nNote: DeepL pricing is based on source text character count.", file=sys.stderr)
+    print(f"See https://www.deepl.com/pro-api for current rates.", file=sys.stderr)
+
+    return 0
+
+
 def main() -> int:
     """Main entry point for the CLI.
 
@@ -678,6 +835,31 @@ def main() -> int:
         help="Exclude specified check(s) (repeatable)"
     )
 
+    # Translate subcommand — uses master, lang, glossary parsers
+    translate_parser = subparsers.add_parser(
+        "translate",
+        parents=[master_parser, lang_parser, glossary_parser],
+        help="Machine-translate entries in master CSV via DeepL API"
+    )
+
+    translate_parser.add_argument(
+        "--auth-key",
+        help="DeepL API authentication key (or set DEEPL_AUTH_KEY env var)"
+    )
+
+    translate_parser.add_argument(
+        "--status",
+        action="append",
+        default=None,
+        help="Which statuses to translate (repeatable, default: empty)"
+    )
+
+    translate_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Estimate cost without calling DeepL API"
+    )
+
     # Parse arguments
     args = parser.parse_args()
 
@@ -690,6 +872,8 @@ def main() -> int:
         return cmd_import(args)
     elif args.command == "export":
         return cmd_export(args)
+    elif args.command == "translate":
+        return cmd_translate(args)
     elif args.command is None:
         parser.print_help()
         return 1
