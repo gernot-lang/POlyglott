@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-02-12
+
+### Added
+
+- `--include` flag for `import` subcommand to specify glob patterns for PO file discovery
+- `--include` flag for `export` subcommand to specify glob patterns for PO file discovery
+- `--sort-by` flag for `import` subcommand to control master CSV sort order
+- `--sort-by` flag for `export` subcommand to control output sort order
+- Shared `resolve_po_files()` helper for unified PO file collection across subcommands
+- Support for combining positional files with `--include` patterns (union of both sources)
+- Warning message when `--include` pattern matches no files
+- Error message when all files are excluded by `--exclude` patterns
+
+### Changed
+
+- **BREAKING**: `import` and `export` now require `--master` flag instead of positional master CSV argument
+- **BREAKING**: Master CSV is now specified explicitly with `--master` flag for clarity
+- CLI refactored to use argparse parent parsers for shared flags (eliminates future omissions)
+- PO file resolution now handles both positional arguments and `--include` patterns consistently
+- Error messages improved with clearer guidance when no PO files are specified
+
+### Migration Guide
+
+- Old: `polyglott import master-de.csv locale/**/*.po`
+- New: `polyglott import --master master-de.csv locale/**/*.po`
+
+- Old: `polyglott export master-de.csv locale/**/*.po`
+- New: `polyglott export --master master-de.csv locale/**/*.po`
+
+Positional PO files and `--include` patterns can be combined:
+
+```bash
+polyglott import --master master-de.csv \
+  locale/de/LC_MESSAGES/django.po \
+  --include "apps/**/de/LC_MESSAGES/*.po" \
+  --exclude "apps/legacy/**"
+```
+
 ## [0.5.0] - 2026-02-12
 
 ### Added
