@@ -501,12 +501,15 @@ def cmd_translate(args: argparse.Namespace) -> int:
         from polyglott.master import load_master, save_master, infer_language, MasterEntry
         from polyglott.translate import DeepLBackend, TranslationError
 
-        # Validate language
+        # Validate target language
         try:
-            lang = infer_language(args.master, args.lang if hasattr(args, 'lang') else None)
+            target_lang = infer_language(args.master, args.target_lang if hasattr(args, 'target_lang') else None)
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
+
+        # Get source language (default: en)
+        source_lang = args.source_lang if hasattr(args, 'source_lang') else 'en'
 
         # Load master CSV
         if not Path(args.master).exists():
@@ -532,7 +535,7 @@ def cmd_translate(args: argparse.Namespace) -> int:
 
         # Dry run mode: estimate cost without API calls
         if args.dry_run if hasattr(args, 'dry_run') else False:
-            return _dry_run_translate(entries_to_translate, lang)
+            return _dry_run_translate(entries_to_translate, target_lang, source_lang)
 
         # Initialize DeepL backend
         try:
@@ -554,9 +557,7 @@ def cmd_translate(args: argparse.Namespace) -> int:
 
         # Create ephemeral glossary if terms available
         if glossary_terms:
-            # Infer source language (assume English for now)
-            source_lang = 'en'
-            backend.create_glossary(glossary_terms, source_lang, lang)
+            backend.create_glossary(glossary_terms, source_lang, target_lang)
 
         # Translate entries
         translated_count = 0
@@ -569,8 +570,8 @@ def cmd_translate(args: argparse.Namespace) -> int:
                     # Translate msgid to msgstr
                     msgstr = backend.translate_entry(
                         entry.msgid,
-                        source_lang='en',  # Assume English source
-                        target_lang=lang,
+                        source_lang=source_lang,
+                        target_lang=target_lang,
                         context=entry.context if hasattr(entry, 'context') else None,
                         glossary_entries=glossary_terms
                     )
@@ -599,6 +600,8 @@ def cmd_translate(args: argparse.Namespace) -> int:
         # Print summary
         total_processed = translated_count + passthrough_count
         print(f"\nTranslation complete:", file=sys.stderr)
+        print(f"  Source language: {source_lang}", file=sys.stderr)
+        print(f"  Target language: {target_lang}", file=sys.stderr)
         print(f"  Entries translated: {translated_count}", file=sys.stderr)
         print(f"  Passthrough entries: {passthrough_count}", file=sys.stderr)
         if error_count > 0:
@@ -615,13 +618,14 @@ def cmd_translate(args: argparse.Namespace) -> int:
         return 1
 
 
-def _dry_run_translate(entries: List, lang: str) -> int:
+def _dry_run_translate(entries: List, target_lang: str, source_lang: str) -> int:
     """
     Dry-run mode: estimate translation cost without API calls.
 
     Args:
         entries: List of MasterEntry objects to translate
-        lang: Target language code
+        target_lang: Target language code
+        source_lang: Source language code
 
     Returns:
         Exit code (0 for success)
@@ -638,7 +642,8 @@ def _dry_run_translate(entries: List, lang: str) -> int:
     print(f"Dry run — no API calls will be made.\n", file=sys.stderr)
     print(f"Entries to translate: {len(entries)}", file=sys.stderr)
     print(f"Estimated characters: {total_chars:,}", file=sys.stderr)
-    print(f"Target language: {lang}", file=sys.stderr)
+    print(f"Source language: {source_lang}", file=sys.stderr)
+    print(f"Target language: {target_lang}", file=sys.stderr)
     print(f"\nNote: DeepL pricing is based on source text character count.", file=sys.stderr)
     print(f"See https://www.deepl.com/pro-api for current rates.", file=sys.stderr)
 
@@ -705,11 +710,23 @@ def main() -> int:
         help='Path to master CSV file (*-<lang>.csv)'
     )
 
-    # Language — used by import, export
+    # Language — used by import, export, translate
     lang_parser = argparse.ArgumentParser(add_help=False)
     lang_parser.add_argument(
         '--lang',
         help='Override target language (instead of inferring from filename)'
+    )
+
+    # Translate language — used by translate only
+    translate_lang_parser = argparse.ArgumentParser(add_help=False)
+    translate_lang_parser.add_argument(
+        '--target-lang',
+        help='Target language for translation (instead of inferring from master CSV filename)'
+    )
+    translate_lang_parser.add_argument(
+        '--source-lang',
+        default='en',
+        help='Source language for translation (default: en)'
     )
 
     parser = argparse.ArgumentParser(
@@ -835,10 +852,10 @@ def main() -> int:
         help="Exclude specified check(s) (repeatable)"
     )
 
-    # Translate subcommand — uses master, lang, glossary parsers
+    # Translate subcommand — uses master, translate_lang, glossary parsers
     translate_parser = subparsers.add_parser(
         "translate",
-        parents=[master_parser, lang_parser, glossary_parser],
+        parents=[master_parser, translate_lang_parser, glossary_parser],
         help="Machine-translate entries in master CSV via DeepL API"
     )
 

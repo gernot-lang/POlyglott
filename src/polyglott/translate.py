@@ -322,6 +322,8 @@ def translate_multiline(
 
 def map_language_code(code: str) -> str:
     """
+    DEPRECATED: Use map_source_lang() or map_target_lang() instead.
+
     Map language codes to DeepL API format.
 
     DeepL uses ISO 639-1 codes with some exceptions:
@@ -347,6 +349,72 @@ def map_language_code(code: str) -> str:
     }
 
     return mappings.get(code.lower(), code)
+
+
+def map_source_lang(code: str) -> str:
+    """
+    Map language code to DeepL source language format.
+
+    DeepL only accepts base codes (EN, DE, FR) for source_lang.
+    Regional variants (EN-US, EN-GB) are NOT accepted for source languages.
+
+    Args:
+        code: ISO 639-1 language code (de, en, fr, etc.) with optional regional variant
+
+    Returns:
+        DeepL-compatible source language code (base code, uppercased)
+
+    Example:
+        >>> map_source_lang("en")
+        'EN'
+        >>> map_source_lang("en-US")
+        'EN'
+        >>> map_source_lang("de")
+        'DE'
+    """
+    # Strip regional variant if present (en-US → en, pt-BR → pt)
+    base_code = code.split('-')[0]
+    # DeepL requires uppercase for source languages
+    return base_code.upper()
+
+
+def map_target_lang(code: str) -> str:
+    """
+    Map language code to DeepL target language format.
+
+    DeepL requires regional variants for certain target languages:
+    - "en" must be "EN-US" or "EN-GB" (default: EN-US)
+    - "pt" must be "PT-PT" or "PT-BR" (default: PT-PT)
+
+    Args:
+        code: ISO 639-1 language code (de, en, fr, etc.) with optional regional variant
+
+    Returns:
+        DeepL-compatible target language code (with regional variant if required)
+
+    Example:
+        >>> map_target_lang("en")
+        'EN-US'
+        >>> map_target_lang("en-GB")
+        'EN-GB'
+        >>> map_target_lang("de")
+        'DE'
+    """
+    # If already has regional variant, preserve it (but uppercase)
+    if '-' in code:
+        parts = code.split('-')
+        return f"{parts[0].upper()}-{parts[1].upper()}"
+
+    # Base code without regional variant
+    base_code = code.upper()
+
+    # Default mappings for ambiguous codes (prefer US English, European Portuguese)
+    mappings = {
+        'EN': 'EN-US',
+        'PT': 'PT-PT',
+    }
+
+    return mappings.get(base_code, base_code)
 
 
 class DeepLBackend:
@@ -479,8 +547,10 @@ class DeepLBackend:
         wrapped, placeholders = tokenize(text)
 
         # Map language codes to DeepL format
-        source_lang = map_language_code(source_lang)
-        target_lang = map_language_code(target_lang)
+        # Source language: base code only (EN, not EN-US)
+        # Target language: with regional variant if required (EN-US, not EN)
+        source_lang = map_source_lang(source_lang)
+        target_lang = map_target_lang(target_lang)
 
         # Build API parameters
         kwargs = {
@@ -491,8 +561,9 @@ class DeepLBackend:
             'ignore_tags': 'x',  # Strategy C: ignore content inside <x> tags
         }
 
-        # Add context as formality if available (not directly supported, skip for now)
-        # DeepL doesn't have a context parameter, but we could use formality hints
+        # Add context if available
+        if context:
+            kwargs['context'] = context
 
         # Add glossary if available
         if self.glossary_id:
@@ -561,9 +632,11 @@ class DeepLBackend:
             return  # No terms, skip glossary creation
 
         try:
-            # Map language codes
-            source_lang = map_language_code(source_lang)
-            target_lang = map_language_code(target_lang)
+            # Map language codes to DeepL format
+            # Source language: base code only (EN, not EN-US)
+            # Target language: with regional variant if required (EN-US, not EN)
+            source_lang = map_source_lang(source_lang)
+            target_lang = map_target_lang(target_lang)
 
             # Create glossary
             glossary = self.translator.create_glossary(
