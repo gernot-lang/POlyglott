@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-02-12
+
+### Fixed
+
+- Translation now properly handles ampersands, angle brackets, and other XML-unsafe characters in message text. Previously, entries containing `&`, `<`, or `>` outside format placeholders would fail with "Tag handling parsing failed" error from DeepL API. The fix escapes these characters before sending to DeepL and restores them after translation.
+
 ## [0.6.1] - 2026-02-12
 
 ### Fixed

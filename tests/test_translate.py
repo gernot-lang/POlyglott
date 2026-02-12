@@ -615,6 +615,169 @@ class TestDeepLBackend:
         assert backend.glossary_id is None
 
 
+class TestXMLEscaping:
+    """Test XML-unsafe character escaping for DeepL tag handling."""
+
+    @patch('polyglott.translate.deepl')
+    def test_ampersand_in_plain_text_sent_as_valid_xml(self, mock_deepl):
+        """Test ampersand in plain text is escaped before sending to DeepL."""
+        import xml.etree.ElementTree as ET
+
+        mock_translator = Mock()
+        mock_translator.get_usage.return_value = Mock()
+        mock_result = Mock()
+        # Simulate DeepL returning escaped text
+        mock_result.text = "Ziehen &amp; ablegen Sie Ihre Dateien oder..."
+        mock_translator.translate_text.return_value = mock_result
+        mock_deepl.Translator.return_value = mock_translator
+
+        backend = DeepLBackend("key")
+        result = backend.translate_entry("Drag & drop your files or...", "en", "de")
+
+        # Verify what was sent to DeepL API
+        call_args = mock_translator.translate_text.call_args
+        sent_text = call_args.kwargs['text']
+
+        # The sent text must be valid XML (this will raise if invalid)
+        try:
+            ET.fromstring(f"<root>{sent_text}</root>")
+        except ET.ParseError as e:
+            pytest.fail(f"Sent text is not valid XML: {e}\nSent: {sent_text}")
+
+        # The ampersand should be escaped in the sent text
+        assert "&amp;" in sent_text, f"Ampersand not escaped in sent text: {sent_text}"
+
+        # Final result should have unescaped ampersand
+        assert "&" in result and "&amp;" not in result
+
+    @patch('polyglott.translate.deepl')
+    def test_angle_brackets_sent_as_valid_xml(self, mock_deepl):
+        """Test angle brackets in plain text are escaped before sending to DeepL."""
+        import xml.etree.ElementTree as ET
+
+        mock_translator = Mock()
+        mock_translator.get_usage.return_value = Mock()
+        mock_result = Mock()
+        mock_result.text = "Verwenden Sie &lt;Strg&gt; zum Auswählen"
+        mock_translator.translate_text.return_value = mock_result
+        mock_deepl.Translator.return_value = mock_translator
+
+        backend = DeepLBackend("key")
+        result = backend.translate_entry("Use <Ctrl> to select", "en", "de")
+
+        # Verify what was sent to DeepL API is valid XML
+        call_args = mock_translator.translate_text.call_args
+        sent_text = call_args.kwargs['text']
+
+        try:
+            ET.fromstring(f"<root>{sent_text}</root>")
+        except ET.ParseError as e:
+            pytest.fail(f"Sent text is not valid XML: {e}\nSent: {sent_text}")
+
+        # Angle brackets should be escaped in sent text
+        assert "&lt;" in sent_text and "&gt;" in sent_text
+
+        # Final result should have unescaped angle brackets
+        assert "<" in result and ">" in result
+
+    @patch('polyglott.translate.deepl')
+    def test_ampersand_with_placeholder_sent_as_valid_xml(self, mock_deepl):
+        """Test ampersand + placeholder creates valid XML with both escaped & and preserved tags."""
+        import xml.etree.ElementTree as ET
+
+        mock_translator = Mock()
+        mock_translator.get_usage.return_value = Mock()
+        mock_result = Mock()
+        # DeepL returns with escaped & and preserved tags
+        mock_result.text = 'Speichern <x id="0">%(name)s</x> &amp; fortfahren'
+        mock_translator.translate_text.return_value = mock_result
+        mock_deepl.Translator.return_value = mock_translator
+
+        backend = DeepLBackend("key")
+        result = backend.translate_entry("Save %(name)s & continue", "en", "de")
+
+        # Verify sent XML is valid
+        call_args = mock_translator.translate_text.call_args
+        sent_text = call_args.kwargs['text']
+
+        try:
+            ET.fromstring(f"<root>{sent_text}</root>")
+        except ET.ParseError as e:
+            pytest.fail(f"Sent text is not valid XML: {e}\nSent: {sent_text}")
+
+        # Should have both: <x> tags for placeholder AND &amp; for ampersand
+        assert '<x id="0">%(name)s</x>' in sent_text
+        assert "&amp;" in sent_text
+
+        # Final result should have both restored
+        assert "%(name)s" in result
+        assert "&" in result and "&amp;" not in result
+
+    @patch('polyglott.translate.deepl')
+    def test_html_entities_not_double_escaped(self, mock_deepl):
+        """Test that &amp; entity is decoded, escaped once, sent as &amp;, then restored."""
+        import xml.etree.ElementTree as ET
+
+        mock_translator = Mock()
+        mock_translator.get_usage.return_value = Mock()
+        mock_result = Mock()
+        # DeepL receives "Save &amp; close" (& escaped), returns translated
+        mock_result.text = "Speichern &amp; schließen"
+        mock_translator.translate_text.return_value = mock_result
+        mock_deepl.Translator.return_value = mock_translator
+
+        backend = DeepLBackend("key")
+        result = backend.translate_entry("Save &amp; close", "en", "de")
+
+        # Verify sent XML is valid
+        call_args = mock_translator.translate_text.call_args
+        sent_text = call_args.kwargs['text']
+
+        try:
+            ET.fromstring(f"<root>{sent_text}</root>")
+        except ET.ParseError as e:
+            pytest.fail(f"Sent text is not valid XML: {e}\nSent: {sent_text}")
+
+        # Should have single &amp; in sent text (not double-escaped to &amp;amp;)
+        assert sent_text.count("&amp;") == 1
+        assert "&amp;amp;" not in sent_text
+
+        # Final result should restore to &amp; (the original entity)
+        assert result == "Speichern &amp; schließen"
+
+    @patch('polyglott.translate.deepl')
+    def test_multiple_xml_unsafe_chars_sent_as_valid_xml(self, mock_deepl):
+        """Test all XML-unsafe characters are properly escaped."""
+        import xml.etree.ElementTree as ET
+
+        mock_translator = Mock()
+        mock_translator.get_usage.return_value = Mock()
+        mock_result = Mock()
+        mock_result.text = "A &lt; B &amp; C &gt; D"
+        mock_translator.translate_text.return_value = mock_result
+        mock_deepl.Translator.return_value = mock_translator
+
+        backend = DeepLBackend("key")
+        result = backend.translate_entry("A < B & C > D", "en", "de")
+
+        # Verify sent XML is valid
+        call_args = mock_translator.translate_text.call_args
+        sent_text = call_args.kwargs['text']
+
+        try:
+            ET.fromstring(f"<root>{sent_text}</root>")
+        except ET.ParseError as e:
+            pytest.fail(f"Sent text is not valid XML: {e}\nSent: {sent_text}")
+
+        # All should be escaped in sent text
+        assert "&lt;" in sent_text
+        assert "&gt;" in sent_text
+        assert "&amp;" in sent_text
+
+        # All should be unescaped in final result
+        assert result == "A < B & C > D"
+
+
 class TestIntegration:
     """Integration tests with master CSV."""
 
