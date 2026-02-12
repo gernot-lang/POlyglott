@@ -2,6 +2,7 @@
 
 import csv
 import subprocess
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -14,6 +15,7 @@ from polyglott.master import (
     merge_master,
     load_master,
     save_master,
+    infer_language,
     _resolve_msgstr_conflict,
     _check_glossary_score,
     _compute_context
@@ -1059,7 +1061,7 @@ class TestCSVIO:
 
 
 class TestCLIMaster:
-    """Integration tests for CLI master CSV commands."""
+    """Integration tests for CLI master CSV commands (migrated to import subcommand)."""
 
     def test_master_creates_new_csv(self):
         """Test creating new master CSV via CLI."""
@@ -1068,9 +1070,9 @@ class TestCLIMaster:
 
             result = subprocess.run(
                 [
-                    "polyglott", "scan",
-                    str(FIXTURES_DIR / "django.po"),
-                    "--master", str(output_path)
+                    sys.executable, "-m", "polyglott", "import",
+                    str(output_path),
+                    str(FIXTURES_DIR / "django.po")
                 ],
                 capture_output=True,
                 text=True
@@ -1094,12 +1096,12 @@ class TestCLIMaster:
             master_path = Path(tmpdir) / "polyglott-accepted-de.csv"
             shutil.copy(FIXTURES_DIR / "master_existing.csv", master_path)
 
-            # Run scan to update with multiple files using --include
+            # Run import to update with multiple files
             result = subprocess.run(
                 [
-                    "polyglott", "scan",
-                    "--include", str(FIXTURES_DIR / "*.po"),
-                    "--master", str(master_path)
+                    sys.executable, "-m", "polyglott", "import",
+                    str(master_path),
+                    str(FIXTURES_DIR / "*.po")
                 ],
                 capture_output=True,
                 text=True
@@ -1130,9 +1132,9 @@ class TestCLIMaster:
 
             result = subprocess.run(
                 [
-                    "polyglott", "scan",
+                    sys.executable, "-m", "polyglott", "import",
+                    str(output_path),
                     str(FIXTURES_DIR / "django.po"),
-                    "--master", str(output_path),
                     "--context-rules", str(rules_path)
                 ],
                 capture_output=True,
@@ -1153,9 +1155,9 @@ class TestCLIMaster:
 
             result = subprocess.run(
                 [
-                    "polyglott", "scan",
+                    sys.executable, "-m", "polyglott", "import",
+                    str(output_path),
                     str(FIXTURES_DIR / "django.po"),
-                    "--master", str(output_path),
                     "--glossary", str(FIXTURES_DIR / "glossary_de.yaml")
                 ],
                 capture_output=True,
@@ -1174,24 +1176,23 @@ class TestCLIMaster:
             assert loaded["User"].score == "10"
 
     def test_master_mutually_exclusive_with_output(self):
-        """Test that --master and -o are mutually exclusive."""
+        """Test that import and scan are separate (no longer mutually exclusive)."""
+        # This test is no longer applicable since import is a separate subcommand
+        # Just verify that scan works without master flag
         with TemporaryDirectory() as tmpdir:
-            master_path = Path(tmpdir) / "polyglott-accepted-de.csv"
             output_path = Path(tmpdir) / "output.csv"
 
             result = subprocess.run(
                 [
-                    "polyglott", "scan",
+                    sys.executable, "-m", "polyglott", "scan",
                     str(FIXTURES_DIR / "django.po"),
-                    "--master", str(master_path),
                     "-o", str(output_path)
                 ],
                 capture_output=True,
                 text=True
             )
 
-            assert result.returncode == 1
-            assert "Cannot specify both --master and -o/--output" in result.stderr
+            assert result.returncode == 0
 
     def test_master_invalid_filename(self):
         """Test that invalid master filename is rejected."""
@@ -1200,16 +1201,16 @@ class TestCLIMaster:
 
             result = subprocess.run(
                 [
-                    "polyglott", "scan",
-                    str(FIXTURES_DIR / "django.po"),
-                    "--master", str(invalid_path)
+                    sys.executable, "-m", "polyglott", "import",
+                    str(invalid_path),
+                    str(FIXTURES_DIR / "django.po")
                 ],
                 capture_output=True,
                 text=True
             )
 
             assert result.returncode == 1
-            assert "must match pattern" in result.stderr
+            assert "Cannot infer target language" in result.stderr
 
     def test_master_no_po_files(self):
         """Test error when no PO files found."""
@@ -1218,9 +1219,9 @@ class TestCLIMaster:
 
             result = subprocess.run(
                 [
-                    "polyglott", "scan",
-                    "--include", "*.nonexistent",
-                    "--master", str(master_path)
+                    sys.executable, "-m", "polyglott", "import",
+                    str(master_path),
+                    "*.nonexistent"
                 ],
                 capture_output=True,
                 text=True
@@ -1234,12 +1235,12 @@ class TestCLIMaster:
         with TemporaryDirectory() as tmpdir:
             master_path = Path(tmpdir) / "polyglott-accepted-de.csv"
 
-            # Initial scan
+            # Initial import
             subprocess.run(
                 [
-                    "polyglott", "scan",
-                    str(FIXTURES_DIR / "django.po"),
-                    "--master", str(master_path)
+                    sys.executable, "-m", "polyglott", "import",
+                    str(master_path),
+                    str(FIXTURES_DIR / "django.po")
                 ],
                 capture_output=True,
                 text=True
@@ -1260,12 +1261,12 @@ class TestCLIMaster:
 
             save_master(list(loaded.values()), str(master_path))
 
-            # Rescan with forms.po which has different translation for Password
+            # Re-import with forms.po which has different translation for Password
             result = subprocess.run(
                 [
-                    "polyglott", "scan",
-                    str(FIXTURES_DIR / "forms.po"),
-                    "--master", str(master_path)
+                    sys.executable, "-m", "polyglott", "import",
+                    str(master_path),
+                    str(FIXTURES_DIR / "forms.po")
                 ],
                 capture_output=True,
                 text=True
@@ -1278,3 +1279,79 @@ class TestCLIMaster:
             # Password in forms.po is "Kennwort" vs "Passwort" in django.po
             assert reloaded["Password"].status == "conflict"
             assert reloaded["Password"].msgstr == "Passwort"  # Original preserved
+
+
+class TestLanguageInference:
+    """Tests for language inference from filename."""
+
+    def test_infer_master_de(self):
+        """Test inferring 'de' from master-de.csv."""
+        lang = infer_language("master-de.csv")
+        assert lang == "de"
+
+    def test_infer_polyglott_accepted_de(self):
+        """Test inferring 'de' from polyglott-accepted-de.csv."""
+        lang = infer_language("polyglott-accepted-de.csv")
+        assert lang == "de"
+
+    def test_infer_help_pages_de(self):
+        """Test inferring 'de' from help-pages-de.csv."""
+        lang = infer_language("help-pages-de.csv")
+        assert lang == "de"
+
+    def test_infer_de_csv(self):
+        """Test inferring 'de' from de.csv."""
+        lang = infer_language("de.csv")
+        assert lang == "de"
+
+    def test_infer_en_us(self):
+        """Test inferring 'en-us' from myproject-en-us.csv."""
+        lang = infer_language("myproject-en-us.csv")
+        assert lang == "en-us"
+
+    def test_infer_pt_br(self):
+        """Test inferring 'pt-br' from project-pt-br.csv."""
+        lang = infer_language("project-pt-br.csv")
+        assert lang == "pt-br"
+
+    def test_infer_with_path(self):
+        """Test language inference works with full paths."""
+        lang = infer_language("/path/to/master-de.csv")
+        assert lang == "de"
+
+    def test_infer_fails_no_language(self):
+        """Test that inference fails for translations.csv."""
+        with pytest.raises(ValueError) as exc_info:
+            infer_language("translations.csv")
+
+        assert "Cannot infer target language" in str(exc_info.value)
+        assert "translations.csv" in str(exc_info.value)
+
+    def test_infer_fails_non_csv(self):
+        """Test that inference fails for non-CSV files."""
+        with pytest.raises(ValueError) as exc_info:
+            infer_language("master-de.po")
+
+        assert "Cannot infer target language" in str(exc_info.value)
+
+    def test_infer_fails_invalid_language_code(self):
+        """Test that inference fails for invalid language codes."""
+        with pytest.raises(ValueError) as exc_info:
+            infer_language("master-toolong.csv")
+
+        assert "Cannot infer target language" in str(exc_info.value)
+
+    def test_override_with_lang_flag(self):
+        """Test that --lang override takes precedence."""
+        lang = infer_language("translations.csv", lang_override="de")
+        assert lang == "de"
+
+    def test_override_ignores_filename(self):
+        """Test that --lang override ignores filename."""
+        lang = infer_language("master-fr.csv", lang_override="de")
+        assert lang == "de"
+
+    def test_zh_hans(self):
+        """Test inferring complex language code like zh-hans."""
+        lang = infer_language("master-zh-hans.csv")
+        assert lang == "zh-hans"
