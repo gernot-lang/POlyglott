@@ -16,6 +16,8 @@ class TestCLI:
 
     def test_version_flag(self):
         """Test --version flag."""
+        from polyglott import __version__
+
         result = subprocess.run(
             [sys.executable, "-m", "polyglott", "--version"],
             capture_output=True,
@@ -23,7 +25,7 @@ class TestCLI:
         )
 
         assert result.returncode == 0
-        assert "0.5.0" in result.stdout
+        assert __version__ in result.stdout
 
     def test_scan_single_file_to_stdout(self):
         """Test scanning a single file to stdout."""

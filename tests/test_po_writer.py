@@ -408,3 +408,71 @@ class TestFullPathsInOutput:
             # Should contain full path, not just "django.po"
             assert any(str(po_path) in detail for detail in result.details)
             assert not any(detail.startswith("WRITE    django.po:") for detail in result.details)
+
+
+class TestIdempotency:
+    """Test that export is idempotent in its reporting."""
+
+    def test_idempotent_export_counts(self):
+        """Test that running export twice reports 0 writes on second run."""
+        with TemporaryDirectory() as tmpdir:
+            po_path = Path(tmpdir) / "test.po"
+
+            # Create PO file with empty msgstr
+            po = polib.POFile()
+            po.append(polib.POEntry(msgid="Hello", msgstr=""))
+            po.save(str(po_path))
+
+            master = [
+                MasterEntry(msgid="Hello", msgstr="Hallo", status="accepted", score="", context="", context_sources="")
+            ]
+
+            # First export: should write the translation
+            result1 = export_to_po(master, str(po_path), {"accepted"})
+            assert result1.writes == 1
+            assert result1.overwrites == 0
+            assert result1.skips == 0
+
+            # Second export: PO now matches master, should skip
+            result2 = export_to_po(master, str(po_path), {"accepted"})
+            assert result2.writes == 0  # Should be 0, not 1
+            assert result2.overwrites == 0
+            assert result2.skips == 1  # Previously written entry now skipped
+
+    def test_skip_when_already_matches(self):
+        """Test that entries already matching master are skipped, not written."""
+        with TemporaryDirectory() as tmpdir:
+            po_path = Path(tmpdir) / "test.po"
+
+            # Create PO file with translation already matching master
+            po = polib.POFile()
+            po.append(polib.POEntry(msgid="Hello", msgstr="Hallo"))
+            po.save(str(po_path))
+
+            master = [
+                MasterEntry(msgid="Hello", msgstr="Hallo", status="accepted", score="", context="", context_sources="")
+            ]
+
+            # Export should skip (already matches)
+            result = export_to_po(master, str(po_path), {"accepted"})
+            assert result.writes == 0
+            assert result.overwrites == 0
+            assert result.skips == 1
+
+    def test_skip_verbose_output(self):
+        """Test that skip actions appear in verbose output."""
+        with TemporaryDirectory() as tmpdir:
+            po_path = Path(tmpdir) / "test.po"
+
+            po = polib.POFile()
+            po.append(polib.POEntry(msgid="Hello", msgstr="Hallo"))
+            po.save(str(po_path))
+
+            master = [
+                MasterEntry(msgid="Hello", msgstr="Hallo", status="accepted", score="", context="", context_sources="")
+            ]
+
+            result = export_to_po(master, str(po_path), {"accepted"}, verbose=True)
+
+            # Should have skip message
+            assert any("SKIP" in detail and "already matches master" in detail for detail in result.details)
