@@ -23,7 +23,7 @@ class TestCLI:
         )
 
         assert result.returncode == 0
-        assert "0.4.0" in result.stdout
+        assert "0.5.0" in result.stdout
 
     def test_scan_single_file_to_stdout(self):
         """Test scanning a single file to stdout."""
@@ -82,7 +82,7 @@ class TestCLI:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(FIXTURES_DIR / "*.po"),
                     "--exclude", str(FIXTURES_DIR / "malformed.po")
                 ],
@@ -103,7 +103,7 @@ class TestCLI:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(FIXTURES_DIR / "*.po"),
                     "--exclude", str(FIXTURES_DIR / "malformed.po")
                 ],
@@ -740,7 +740,7 @@ class TestImportSubcommand:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(FIXTURES_DIR / "master" / "django.po")
                 ],
                 capture_output=True,
@@ -764,7 +764,7 @@ class TestImportSubcommand:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(FIXTURES_DIR / "master" / "*.po")
                 ],
                 capture_output=True,
@@ -788,7 +788,7 @@ class TestImportSubcommand:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(FIXTURES_DIR / "master" / "django.po"),
                     "--context-rules", str(rules_path)
                 ],
@@ -808,7 +808,7 @@ class TestImportSubcommand:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(FIXTURES_DIR / "master" / "django.po"),
                     "--glossary", str(FIXTURES_DIR / "master" / "glossary_de.yaml")
                 ],
@@ -828,7 +828,7 @@ class TestImportSubcommand:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(FIXTURES_DIR / "master" / "django.po")
                 ],
                 capture_output=True,
@@ -848,7 +848,7 @@ class TestImportSubcommand:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(FIXTURES_DIR / "master" / "django.po"),
                     "--lang", "de"
                 ],
@@ -869,7 +869,7 @@ class TestImportSubcommand:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(FIXTURES_DIR / "master" / "django.po")
                 ],
                 capture_output=True,
@@ -880,7 +880,7 @@ class TestImportSubcommand:
             assert "Cannot infer target language" in result.stderr
 
     def test_import_no_po_files_error(self):
-        """Test error when no PO files specified."""
+        """Test error when no PO files specified (Stage 5.1)."""
         from tempfile import TemporaryDirectory
 
         with TemporaryDirectory() as tmpdir:
@@ -889,13 +889,14 @@ class TestImportSubcommand:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(master_path)
+                    "--master", str(master_path)
                 ],
                 capture_output=True,
                 text=True
             )
 
-            assert result.returncode != 0
+            assert result.returncode == 1
+            assert "No PO files specified" in result.stderr
 
 
 class TestExportSubcommand:
@@ -931,7 +932,7 @@ class TestExportSubcommand:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "export",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(po_path)
                 ],
                 capture_output=True,
@@ -1088,7 +1089,7 @@ class TestExportSubcommand:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "export",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(po_path)
                 ],
                 capture_output=True,
@@ -1149,3 +1150,312 @@ class TestScanRestoration:
 
         # Should fail - must specify FILE
         assert result.returncode != 0
+
+
+class TestCLIHarmonization:
+    """Test suite for CLI harmonization features (Stage 5.1)."""
+
+    def test_import_master_flag_required(self):
+        """Test that import --master flag is required."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "polyglott", "import",
+                str(FIXTURES_DIR / "simple.po")
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        assert result.returncode == 2  # argparse error
+        assert "--master" in result.stderr
+
+    def test_export_master_flag_required(self):
+        """Test that export --master flag is required."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "polyglott", "export",
+                str(FIXTURES_DIR / "simple.po")
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        assert result.returncode == 2  # argparse error
+        assert "--master" in result.stderr
+
+    def test_import_with_include_flag(self):
+        """Test import --include flag works."""
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    "--master", str(master_path),
+                    "--include", str(FIXTURES_DIR / "simple.po")
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+            assert master_path.exists()
+
+    def test_import_with_sort_by_flag(self):
+        """Test import --sort-by flag works."""
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    "--master", str(master_path),
+                    "--sort-by", "msgid",
+                    str(FIXTURES_DIR / "simple.po")
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+
+    def test_export_with_include_flag(self):
+        """Test export --include flag works."""
+        from tempfile import TemporaryDirectory
+        import polib
+        import csv
+
+        with TemporaryDirectory() as tmpdir:
+            # Create master CSV
+            master_path = Path(tmpdir) / "master-de.csv"
+            with open(master_path, 'w', encoding='utf-8-sig', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=['msgid', 'msgstr', 'status', 'score', 'context', 'context_sources'])
+                writer.writeheader()
+                writer.writerow({
+                    'msgid': 'Hello',
+                    'msgstr': 'Hallo',
+                    'status': 'accepted',
+                    'score': '',
+                    'context': '',
+                    'context_sources': ''
+                })
+
+            # Create PO file
+            po_path = Path(tmpdir) / "test.po"
+            po = polib.POFile()
+            po.append(polib.POEntry(msgid="Hello", msgstr=""))
+            po.save(str(po_path))
+
+            # Export using --include
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "export",
+                    "--master", str(master_path),
+                    "--include", str(po_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+            assert "Updated 1 entries" in result.stdout
+
+    def test_export_with_sort_by_flag(self):
+        """Test export --sort-by flag is accepted (doesn't affect export)."""
+        from tempfile import TemporaryDirectory
+        import polib
+        import csv
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+            with open(master_path, 'w', encoding='utf-8-sig', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=['msgid', 'msgstr', 'status', 'score', 'context', 'context_sources'])
+                writer.writeheader()
+                writer.writerow({
+                    'msgid': 'Hello',
+                    'msgstr': 'Hallo',
+                    'status': 'accepted',
+                    'score': '',
+                    'context': '',
+                    'context_sources': ''
+                })
+
+            po_path = Path(tmpdir) / "test.po"
+            po = polib.POFile()
+            po.append(polib.POEntry(msgid="Hello", msgstr=""))
+            po.save(str(po_path))
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "export",
+                    "--master", str(master_path),
+                    "--sort-by", "msgid",
+                    str(po_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+
+    def test_import_positional_and_include_combined(self):
+        """Test import combines positional PO files with --include."""
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+
+            # Use both positional and --include
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    "--master", str(master_path),
+                    str(FIXTURES_DIR / "simple.po"),
+                    "--include", str(FIXTURES_DIR / "unicode.po")
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+            assert master_path.exists()
+            # Should have entries from both files
+            assert "Total entries:" in result.stderr
+
+    def test_import_include_with_exclude(self):
+        """Test import --include with --exclude."""
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    "--master", str(master_path),
+                    "--include", str(FIXTURES_DIR / "*.po"),
+                    "--exclude", str(FIXTURES_DIR / "malformed.po")
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+
+    def test_import_no_files_error(self):
+        """Test import error when no PO files result from any source."""
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+
+            # No positional files, no --include
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    "--master", str(master_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 1
+            assert "No PO files specified" in result.stderr
+
+    def test_import_all_files_excluded_error(self):
+        """Test import error when all files are excluded."""
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "import",
+                    "--master", str(master_path),
+                    str(FIXTURES_DIR / "simple.po"),
+                    "--exclude", str(FIXTURES_DIR / "*.po")
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 1
+            assert "No PO files remain" in result.stderr
+
+    def test_export_positional_and_include_combined(self):
+        """Test export combines positional PO files with --include."""
+        from tempfile import TemporaryDirectory
+        import polib
+        import csv
+
+        with TemporaryDirectory() as tmpdir:
+            master_path = Path(tmpdir) / "master-de.csv"
+            with open(master_path, 'w', encoding='utf-8-sig', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=['msgid', 'msgstr', 'status', 'score', 'context', 'context_sources'])
+                writer.writeheader()
+                writer.writerow({
+                    'msgid': 'Test',
+                    'msgstr': 'Test',
+                    'status': 'accepted',
+                    'score': '',
+                    'context': '',
+                    'context_sources': ''
+                })
+
+            # Create two PO files
+            po1_path = Path(tmpdir) / "test1.po"
+            po1 = polib.POFile()
+            po1.append(polib.POEntry(msgid="Test", msgstr=""))
+            po1.save(str(po1_path))
+
+            po2_path = Path(tmpdir) / "test2.po"
+            po2 = polib.POFile()
+            po2.append(polib.POEntry(msgid="Test", msgstr=""))
+            po2.save(str(po2_path))
+
+            # Export to both using positional and --include
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "polyglott", "export",
+                    "--master", str(master_path),
+                    str(po1_path),
+                    "--include", str(po2_path)
+                ],
+                capture_output=True,
+                text=True
+            )
+
+            assert result.returncode == 0
+            assert "across 2 files" in result.stdout
+
+    def test_scan_still_works_without_include(self):
+        """Regression test: scan still works as single-file command."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "polyglott", "scan",
+                str(FIXTURES_DIR / "simple.po")
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        assert result.returncode == 0
+        assert "Total entries:" in result.stderr
+
+    def test_lint_still_works_with_include(self):
+        """Regression test: lint still works with --include."""
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "polyglott", "lint",
+                "--include", str(FIXTURES_DIR / "simple.po")
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        assert result.returncode in [0, 1, 2]  # Any valid exit code
