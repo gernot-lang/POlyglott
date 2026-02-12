@@ -16,6 +16,8 @@ from polyglott.translate import (
     restore_entities,
     translate_multiline,
     map_language_code,
+    map_source_lang,
+    map_target_lang,
     DeepLBackend,
     TranslationError,
 )
@@ -266,6 +268,52 @@ class TestLanguageMapping:
         assert map_language_code("fr") == "fr"
         assert map_language_code("es") == "es"
 
+    def test_map_source_lang_strips_regional_variants(self):
+        """Test source language mapping strips regional variants.
+
+        DeepL only accepts base codes (EN, DE, FR) for source_lang.
+        Regional variants (EN-US, EN-GB) are target-only.
+        """
+        # Base codes should be uppercased
+        assert map_source_lang("en") == "EN"
+        assert map_source_lang("de") == "DE"
+        assert map_source_lang("fr") == "FR"
+        assert map_source_lang("es") == "ES"
+
+        # Regional variants should be stripped to base code
+        assert map_source_lang("en-US") == "EN"
+        assert map_source_lang("en-GB") == "EN"
+        assert map_source_lang("pt-BR") == "PT"
+        assert map_source_lang("pt-PT") == "PT"
+
+        # Already uppercased should stay uppercased
+        assert map_source_lang("EN") == "EN"
+        assert map_source_lang("DE") == "DE"
+
+    def test_map_target_lang_adds_regional_variants(self):
+        """Test target language mapping adds regional variants where required.
+
+        DeepL requires regional variants for certain target languages:
+        - "en" must be "EN-US" or "EN-GB" (default: EN-US)
+        - "pt" must be "PT-PT" or "PT-BR" (default: PT-PT)
+        """
+        # English requires regional variant for target
+        assert map_target_lang("en") == "EN-US"
+        assert map_target_lang("EN") == "EN-US"
+
+        # Portuguese requires regional variant for target
+        assert map_target_lang("pt") == "PT-PT"
+        assert map_target_lang("PT") == "PT-PT"
+
+        # Other languages should be uppercased but no regional variant
+        assert map_target_lang("de") == "DE"
+        assert map_target_lang("fr") == "FR"
+        assert map_target_lang("es") == "ES"
+
+        # Already-specified regional variants should be preserved and uppercased
+        assert map_target_lang("en-GB") == "EN-GB"
+        assert map_target_lang("pt-BR") == "PT-BR"
+
 
 class TestDeepLBackend:
     """Test DeepL backend class."""
@@ -337,6 +385,56 @@ class TestDeepLBackend:
 
         assert result == "Hallo Welt"
         mock_translator.translate_text.assert_called_once()
+
+    @patch('polyglott.translate.deepl')
+    def test_translate_uses_correct_source_and_target_lang_codes(self, mock_deepl):
+        """Test that translate_entry uses base code for source, regional variant for target.
+
+        Bug: map_language_code("en") returns "en-US", which is passed as source_lang.
+        DeepL only accepts base codes ("EN") for source languages.
+        Regional variants ("EN-US", "EN-GB") are target-only.
+
+        This test ensures:
+        - source_lang is mapped to base code (EN, not EN-US)
+        - target_lang is mapped to regional variant (DE stays DE)
+        """
+        mock_translator = Mock()
+        mock_translator.get_usage.return_value = Mock()
+        mock_result = Mock()
+        mock_result.text = "Hallo Welt"
+        mock_translator.translate_text.return_value = mock_result
+        mock_deepl.Translator.return_value = mock_translator
+
+        backend = DeepLBackend("key")
+        result = backend.translate_entry("Hello world", "en", "de")
+
+        # Verify correct language codes were used in API call
+        call_args = mock_translator.translate_text.call_args
+        assert call_args.kwargs['source_lang'] == "EN", "source_lang should be base code EN, not EN-US"
+        assert call_args.kwargs['target_lang'] == "DE", "target_lang should be DE"
+
+    @patch('polyglott.translate.deepl')
+    def test_create_glossary_uses_correct_source_and_target_lang_codes(self, mock_deepl):
+        """Test that create_glossary uses base code for source, regional variant for target.
+
+        Bug: map_language_code("en") returns "en-US", which is passed as source_lang to create_glossary.
+        DeepL only accepts base codes for source languages in glossaries too.
+        """
+        mock_translator = Mock()
+        mock_translator.get_usage.return_value = Mock()
+        mock_glossary = Mock()
+        mock_glossary.glossary_id = "glossary-123"
+        mock_translator.create_glossary.return_value = mock_glossary
+        mock_deepl.Translator.return_value = mock_translator
+
+        backend = DeepLBackend("key")
+        terms = {"hello": "hallo", "world": "welt"}
+        backend.create_glossary(terms, "en", "de")
+
+        # Verify correct language codes were used in create_glossary call
+        call_args = mock_translator.create_glossary.call_args
+        assert call_args.kwargs['source_lang'] == "EN", "source_lang should be base code EN, not EN-US"
+        assert call_args.kwargs['target_lang'] == "DE", "target_lang should be DE"
 
     @patch('polyglott.translate.deepl')
     def test_translate_entry_with_placeholder(self, mock_deepl):

@@ -46,11 +46,7 @@ polyglott = "polyglott.cli:main"
 where = ["src"]
 
 [tool.bumpversion]
-<<<<<<< HEAD
-current_version = "0.5.2"
-=======
 current_version = "0.6.0"
->>>>>>> develop
 parse = "(?P<major>\\d+)\\.(?P<minor>\\d+)\\.(?P<patch>\\d+)"
 serialize = ["{major}.{minor}.{patch}"]
 search = "{current_version}"
