@@ -80,8 +80,20 @@ def export_to_po(
             skips += 1
             continue
 
-        # Determine if this is an overwrite or new write
-        is_overwrite = bool(po_entry.msgstr and po_entry.msgstr != master_entry.msgstr)
+        # Determine action: write, overwrite, or skip
+        if not po_entry.msgstr:
+            action = "write"
+        elif po_entry.msgstr != master_entry.msgstr:
+            action = "overwrite"
+        else:
+            action = "skip"  # PO already matches master
+
+        # Skip if already matches (no need to write)
+        if action == "skip":
+            skips += 1
+            if verbose:
+                details.append(f"SKIP     {po_path}: \"{msgid}\" — already matches master")
+            continue
 
         # Update msgstr
         old_msgstr = po_entry.msgstr
@@ -99,13 +111,13 @@ def export_to_po(
         # For 'review' status: leave fuzzy flag unchanged
 
         # Record action
-        if is_overwrite:
+        if action == "overwrite":
             overwrites += 1
             if verbose:
                 details.append(
                     f"OVERWRITE {po_path}: \"{msgid}\" — \"{old_msgstr}\" → \"{master_entry.msgstr}\""
                 )
-        else:
+        else:  # action == "write"
             writes += 1
             if verbose:
                 details.append(
