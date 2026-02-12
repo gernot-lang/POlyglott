@@ -73,7 +73,7 @@ class TestCLI:
             Path(output_file).unlink()
 
     def test_scan_with_glob_patterns(self):
-        """Test scanning multiple files now uses import subcommand (Stage 5)."""
+        """Test scanning multiple files now uses import subcommand (Stage 5.1)."""
         from tempfile import TemporaryDirectory
 
         with TemporaryDirectory() as tmpdir:
@@ -83,7 +83,7 @@ class TestCLI:
                 [
                     sys.executable, "-m", "polyglott", "import",
                     "--master", str(master_path),
-                    str(FIXTURES_DIR / "*.po"),
+                    "--include", str(FIXTURES_DIR / "*.po"),
                     "--exclude", str(FIXTURES_DIR / "malformed.po")
                 ],
                 capture_output=True,
@@ -94,7 +94,7 @@ class TestCLI:
             assert master_path.exists()
 
     def test_scan_with_exclusions(self):
-        """Test exclusion patterns now use import subcommand (Stage 5)."""
+        """Test exclusion patterns now use import subcommand (Stage 5.1)."""
         from tempfile import TemporaryDirectory
 
         with TemporaryDirectory() as tmpdir:
@@ -104,7 +104,7 @@ class TestCLI:
                 [
                     sys.executable, "-m", "polyglott", "import",
                     "--master", str(master_path),
-                    str(FIXTURES_DIR / "*.po"),
+                    "--include", str(FIXTURES_DIR / "*.po"),
                     "--exclude", str(FIXTURES_DIR / "malformed.po")
                 ],
                 capture_output=True,
@@ -765,7 +765,7 @@ class TestImportSubcommand:
                 [
                     sys.executable, "-m", "polyglott", "import",
                     "--master", str(master_path),
-                    str(FIXTURES_DIR / "master" / "*.po")
+                    "--include", str(FIXTURES_DIR / "master" / "*.po")
                 ],
                 capture_output=True,
                 text=True
@@ -976,7 +976,7 @@ class TestExportSubcommand:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "export",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(po_path),
                     "--dry-run"
                 ],
@@ -1021,7 +1021,7 @@ class TestExportSubcommand:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "export",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(po_path),
                     "-v"
                 ],
@@ -1061,7 +1061,7 @@ class TestExportSubcommand:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "export",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(po_path),
                     "--status", "machine"
                 ],

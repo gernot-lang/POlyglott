@@ -1071,7 +1071,7 @@ class TestCLIMaster:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(output_path),
+                    "--master", str(output_path),
                     str(FIXTURES_DIR / "django.po")
                 ],
                 capture_output=True,
@@ -1100,8 +1100,8 @@ class TestCLIMaster:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(master_path),
-                    str(FIXTURES_DIR / "*.po")
+                    "--master", str(master_path),
+                    "--include", str(FIXTURES_DIR / "*.po")
                 ],
                 capture_output=True,
                 text=True
@@ -1133,7 +1133,7 @@ class TestCLIMaster:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(output_path),
+                    "--master", str(output_path),
                     str(FIXTURES_DIR / "django.po"),
                     "--context-rules", str(rules_path)
                 ],
@@ -1156,7 +1156,7 @@ class TestCLIMaster:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(output_path),
+                    "--master", str(output_path),
                     str(FIXTURES_DIR / "django.po"),
                     "--glossary", str(FIXTURES_DIR / "glossary_de.yaml")
                 ],
@@ -1202,7 +1202,7 @@ class TestCLIMaster:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(invalid_path),
+                    "--master", str(invalid_path),
                     str(FIXTURES_DIR / "django.po")
                 ],
                 capture_output=True,
@@ -1213,22 +1213,24 @@ class TestCLIMaster:
             assert "Cannot infer target language" in result.stderr
 
     def test_master_no_po_files(self):
-        """Test error when no PO files found."""
+        """Test error when no PO files found (Stage 5.1)."""
         with TemporaryDirectory() as tmpdir:
             master_path = Path(tmpdir) / "polyglott-accepted-de.csv"
 
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(master_path),
-                    "*.nonexistent"
+                    "--master", str(master_path),
+                    "--include", "*.nonexistent"
                 ],
                 capture_output=True,
                 text=True
             )
 
             assert result.returncode == 1
-            assert "No PO files found" in result.stderr
+            # Should warn about no matches
+            assert "Pattern '*.nonexistent' matched no files" in result.stderr
+            assert "No PO files specified" in result.stderr
 
     def test_conflict_detection_roundtrip(self):
         """Test conflict detection in full workflow."""
@@ -1239,7 +1241,7 @@ class TestCLIMaster:
             subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(FIXTURES_DIR / "django.po")
                 ],
                 capture_output=True,
@@ -1265,7 +1267,7 @@ class TestCLIMaster:
             result = subprocess.run(
                 [
                     sys.executable, "-m", "polyglott", "import",
-                    str(master_path),
+                    "--master", str(master_path),
                     str(FIXTURES_DIR / "forms.po")
                 ],
                 capture_output=True,
