@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-02-12
+
+### Fixed
+
+- DeepL translation now accepts source language correctly - fixed "Bad request. Reason: Value for 'source_lang' not supported" error that occurred when translating from English or other languages. DeepL requires base language codes (EN, DE, FR) for source languages, not regional variants (EN-US, EN-GB).
+
+### Changed
+
+- `translate` subcommand now uses `--target-lang` and `--source-lang` flags for clarity (instead of `--lang`). Source language defaults to English but can now be explicitly configured.
+
+### Added
+
+- Context parameter is now passed to DeepL API when available, enabling context-aware translations for better accuracy.
+
 ## [0.6.0] - 2026-02-12
 
 ### Added
