@@ -149,6 +149,70 @@ def restore(text: str) -> str:
     return pattern.sub(r'\1', text)
 
 
+def escape_xml_text(text: str) -> str:
+    """
+    Escape XML-unsafe characters outside <x> tags.
+
+    After tokenize() wraps placeholders in <x id="N">...</x> tags, any remaining
+    &, <, or > characters in the text (outside tags) would make the XML invalid.
+    This function escapes those characters to create valid XML for DeepL.
+
+    Args:
+        text: Text with <x> tags wrapping placeholders
+
+    Returns:
+        Text with XML-unsafe characters escaped outside tags
+
+    Example:
+        >>> escape_xml_text('Save <x id="0">%(name)s</x> & continue')
+        'Save <x id="0">%(name)s</x> &amp; continue'
+    """
+    # Split on <x id="N">...</x> tags to isolate non-tag portions
+    tag_pattern = re.compile(r'(<x id="\d+">[^<]+</x>)')
+    parts = tag_pattern.split(text)
+
+    # Escape XML-unsafe chars in non-tag parts only (odd indices are tags)
+    escaped_parts = []
+    for i, part in enumerate(parts):
+        if i % 2 == 0:  # Non-tag portion
+            # Escape in this order to avoid double-escaping
+            part = part.replace('&', '&amp;')
+            part = part.replace('<', '&lt;')
+            part = part.replace('>', '&gt;')
+        escaped_parts.append(part)
+
+    return ''.join(escaped_parts)
+
+
+def unescape_xml_text(text: str) -> str:
+    """
+    Unescape XML entities after translation.
+
+    After DeepL returns translated text with escaped entities, we need to
+    restore the original characters. This is the inverse of escape_xml_text().
+
+    CRITICAL: Unescape order matters! &amp; must be decoded LAST, otherwise
+    &lt; → < followed by &amp; → & would double-decode &amp;lt; incorrectly.
+
+    Args:
+        text: Text with XML entities
+
+    Returns:
+        Text with entities unescaped
+
+    Example:
+        >>> unescape_xml_text('Save &amp; continue')
+        'Save & continue'
+    """
+    # Unescape in reverse order: < and > first, then &
+    # This prevents double-decoding of sequences like &amp;lt;
+    text = text.replace('&lt;', '<')
+    text = text.replace('&gt;', '>')
+    text = text.replace('&amp;', '&')  # MUST be last
+
+    return text
+
+
 def normalize_spacing(text: str) -> str:
     """
     Normalize spacing around placeholders.
@@ -546,6 +610,10 @@ class DeepLBackend:
         # Tokenize: wrap placeholders in XML tags
         wrapped, placeholders = tokenize(text)
 
+        # Escape XML-unsafe characters (&, <, >) outside tags
+        # This ensures valid XML for DeepL's tag_handling="xml"
+        escaped = escape_xml_text(wrapped)
+
         # Map language codes to DeepL format
         # Source language: base code only (EN, not EN-US)
         # Target language: with regional variant if required (EN-US, not EN)
@@ -554,7 +622,7 @@ class DeepLBackend:
 
         # Build API parameters
         kwargs = {
-            'text': wrapped,
+            'text': escaped,
             'source_lang': source_lang,
             'target_lang': target_lang,
             'tag_handling': 'xml',
@@ -580,8 +648,11 @@ class DeepLBackend:
         except Exception as e:
             raise TranslationError(f"DeepL API error: {e}")
 
+        # Unescape XML entities before removing tags
+        unescaped = unescape_xml_text(translated)
+
         # Restore: remove XML tag wrappers
-        restored = restore(translated)
+        restored = restore(unescaped)
 
         # Normalize spacing around placeholders
         normalized = normalize_spacing(restored)
