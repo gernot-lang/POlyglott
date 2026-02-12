@@ -256,26 +256,26 @@ polyglott scan messages.po --master polyglott-accepted-de.csv
 
 The master CSV has a fixed schema optimized for translation management:
 
-| Column | Description |
-|--------|-------------|
-| `msgid` | Source text (deduplication key) |
-| `msgstr` | Translation text |
-| `status` | Translation status (see below) |
-| `score` | Quality score (empty or "10" for glossary match) |
-| `context` | Inferred UI context |
-| `context_sources` | Disambiguation info (when ambiguous) |
+| Column            | Description                                      |
+|-------------------|--------------------------------------------------|
+| `msgid`           | Source text (deduplication key)                  |
+| `msgstr`          | Translation text                                 |
+| `status`          | Translation status (see below)                   |
+| `score`           | Quality score (empty or "10" for glossary match) |
+| `context`         | Inferred UI context                              |
+| `context_sources` | Disambiguation info (when ambiguous)             |
 
 #### Status Values
 
-| Status | Meaning | Typical Workflow |
-|--------|---------|------------------|
-| `empty` | No translation yet | Initial scan of untranslated entries |
-| `review` | Has translation, needs review | Default for translated entries; edit in CSV |
-| `accepted` | Reviewed and approved | Mark as accepted after review |
-| `rejected` | Rejected translation | Mark as rejected to skip |
-| `conflict` | PO diverged from accepted | Resolve manually, then re-accept |
-| `stale` | Removed from PO files | Entry no longer in codebase |
-| `machine` | Machine-translated (future) | For auto-translated entries |
+| Status     | Meaning                       | Typical Workflow                            |
+|------------|-------------------------------|---------------------------------------------|
+| `empty`    | No translation yet            | Initial scan of untranslated entries        |
+| `review`   | Has translation, needs review | Default for translated entries; edit in CSV |
+| `accepted` | Reviewed and approved         | Mark as accepted after review               |
+| `rejected` | Rejected translation          | Mark as rejected to skip                    |
+| `conflict` | PO diverged from accepted     | Resolve manually, then re-accept            |
+| `stale`    | Removed from PO files         | Entry no longer in codebase                 |
+| `machine`  | Machine-translated (future)   | For auto-translated entries                 |
 
 #### Merge Workflow
 
@@ -311,6 +311,7 @@ polyglott scan --include "locales/*/django.po" --master polyglott-accepted-de.cs
 ```
 
 **Deduplication rules:**
+
 - Same msgid across files → single master row
 - References aggregated from all files (for context inference)
 - Msgstr conflicts resolved by majority voting (most common wins)
@@ -359,6 +360,7 @@ polyglott scan de.po --master polyglott-accepted-de.csv
 ```
 
 **Resolution workflow:**
+
 1. Review the conflict
 2. Either accept the new PO translation or keep your version
 3. Manually update status back to `accepted`
