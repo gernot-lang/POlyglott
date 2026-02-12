@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-02-12
+
+### Fixed
+- Export counter now properly distinguishes write/overwrite/skip states - running export twice on unchanged files correctly reports 0 writes on the second run
+- Fixed hardcoded version assertion in CLI tests to use dynamic import
+
 ## [0.5.1] - 2026-02-12
 
 ### Added
