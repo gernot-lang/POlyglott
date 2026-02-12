@@ -245,10 +245,42 @@ The master CSV is a project-wide translation registry that:
 Import translations from PO files into the master CSV:
 
 ```bash
-polyglott import master-de.csv locale/de/LC_MESSAGES/*.po
+polyglott import --master master-de.csv locale/de/LC_MESSAGES/*.po
 ```
 
 **Filename format:** Use `-<lang>.csv` suffix (e.g., `master-de.csv`, `polyglott-accepted-fr.csv`, `help-pages-de.csv`). Language is inferred from the filename.
+
+#### Import Options
+
+**Include pattern** - Use glob patterns to find PO files:
+
+```bash
+polyglott import --master master-de.csv --include "locale/**/de/LC_MESSAGES/django.po"
+```
+
+**Exclude pattern** - Exclude specific files or directories:
+
+```bash
+polyglott import --master master-de.csv \
+  --include "locale/**/*.po" \
+  --exclude "locale/legacy/**"
+```
+
+**Combine positional and --include** - Both sources are merged:
+
+```bash
+polyglott import --master master-de.csv \
+  locale/de/LC_MESSAGES/django.po \
+  --include "apps/**/de/LC_MESSAGES/*.po"
+```
+
+**Sort output** - Control master CSV sort order:
+
+```bash
+polyglott import --master master-de.csv --sort-by msgid locale/**/*.po
+```
+
+Available sort fields: `msgid`, `source_file`, `fuzzy`, `msgstr`
 
 #### Master CSV Schema
 
@@ -279,7 +311,7 @@ The master CSV has a fixed schema optimized for translation management:
 
 ```bash
 # 1. Import PO files into master CSV
-polyglott import master-de.csv locale/de/LC_MESSAGES/*.po
+polyglott import --master master-de.csv locale/de/LC_MESSAGES/*.po
 
 # 2. Review translations in CSV editor (Excel, LibreOffice, etc.)
 #    - Check translations in 'review' status
@@ -287,10 +319,10 @@ polyglott import master-de.csv locale/de/LC_MESSAGES/*.po
 #    - Optionally edit msgstr or add custom scores
 
 # 3. Export accepted translations back to PO files
-polyglott export master-de.csv locale/de/LC_MESSAGES/*.po
+polyglott export --master master-de.csv locale/de/LC_MESSAGES/*.po
 
 # 4. After code changes, re-import to update master
-polyglott import master-de.csv locale/de/LC_MESSAGES/*.po
+polyglott import --master master-de.csv locale/de/LC_MESSAGES/*.po
 
 # Master CSV merge rules:
 # - accepted + matching PO → no change
@@ -306,7 +338,7 @@ polyglott import master-de.csv locale/de/LC_MESSAGES/*.po
 When importing multiple PO files, the master CSV deduplicates by msgid:
 
 ```bash
-polyglott import master-de.csv locale/*/LC_MESSAGES/django.po
+polyglott import --master master-de.csv --include "locale/**/LC_MESSAGES/django.po"
 ```
 
 **Deduplication rules:**
@@ -321,7 +353,7 @@ polyglott import master-de.csv locale/*/LC_MESSAGES/django.po
 Combine with `--glossary` to auto-score exact matches:
 
 ```bash
-polyglott import master-de.csv \
+polyglott import --master master-de.csv \
   --glossary glossary-de.yaml \
   locale/de/LC_MESSAGES/django.po
 ```
@@ -333,7 +365,7 @@ Entries with exact glossary matches (case-insensitive) receive `score: 10`. Scor
 Combine with `--context-rules` or `--preset` to populate context columns:
 
 ```bash
-polyglott import master-de.csv \
+polyglott import --master master-de.csv \
   --preset django \
   locale/de/LC_MESSAGES/django.po
 ```
@@ -346,11 +378,11 @@ When accepted translations diverge from PO files:
 
 ```bash
 # Initial: Password → "Passwort" (accepted)
-polyglott import master-de.csv locale/de/LC_MESSAGES/django.po
+polyglott import --master master-de.csv locale/de/LC_MESSAGES/django.po
 # (mark Password as accepted in CSV)
 
 # Later: PO file changes Password → "Kennwort"
-polyglott import master-de.csv locale/de/LC_MESSAGES/django.po
+polyglott import --master master-de.csv locale/de/LC_MESSAGES/django.po
 
 # Master CSV:
 # msgid: Password
@@ -369,7 +401,7 @@ polyglott import master-de.csv locale/de/LC_MESSAGES/django.po
 Export accepted translations from the master CSV back to PO files:
 
 ```bash
-polyglott export master-de.csv locale/de/LC_MESSAGES/*.po
+polyglott export --master master-de.csv locale/de/LC_MESSAGES/*.po
 ```
 
 #### Export Options
@@ -377,21 +409,35 @@ polyglott export master-de.csv locale/de/LC_MESSAGES/*.po
 **Dry run** - Preview what would change without modifying files:
 
 ```bash
-polyglott export master-de.csv --dry-run locale/de/LC_MESSAGES/*.po
+polyglott export --master master-de.csv --dry-run locale/de/LC_MESSAGES/*.po
 ```
 
 **Verbose output** - Show per-entry details:
 
 ```bash
-polyglott export master-de.csv -v locale/de/LC_MESSAGES/*.po
+polyglott export --master master-de.csv -v locale/de/LC_MESSAGES/*.po
 ```
 
 **Status filtering** - Export additional statuses beyond `accepted`:
 
 ```bash
 # Export both accepted and machine translations
-polyglott export master-de.csv --status accepted --status machine locale/de/LC_MESSAGES/*.po
+polyglott export --master master-de.csv --status accepted --status machine locale/de/LC_MESSAGES/*.po
 ```
+
+**Include pattern** - Use glob patterns to find PO files:
+
+```bash
+polyglott export --master master-de.csv --include "locale/**/de/LC_MESSAGES/*.po"
+```
+
+**Sort output** - Control output sort order:
+
+```bash
+polyglott export --master master-de.csv --sort-by msgid locale/**/*.po
+```
+
+Available sort fields: `msgid`, `source_file`, `fuzzy`, `msgstr`
 
 #### Fuzzy Flag Handling
 
@@ -412,7 +458,7 @@ The target language is inferred from the master CSV filename:
 Override with `--lang` if needed:
 
 ```bash
-polyglott export translations.csv --lang de locale/de/LC_MESSAGES/*.po
+polyglott export --master translations.csv --lang de locale/de/LC_MESSAGES/*.po
 ```
 
 #### Status Transitions

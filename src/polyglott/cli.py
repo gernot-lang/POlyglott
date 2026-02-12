@@ -16,29 +16,44 @@ from polyglott.formatter import format_text_output
 from polyglott.context import load_context_rules, load_preset, match_context
 
 
-def discover_po_files(
-        include_patterns: List[str],
+def resolve_po_files(
+        positional_files: Optional[List[str]] = None,
+        include_patterns: Optional[List[str]] = None,
         exclude_patterns: Optional[List[str]] = None
 ) -> List[str]:
-    """Discover PO files using glob patterns.
+    """Collect PO files from positional args and --include, minus --exclude.
 
     Args:
-        include_patterns: List of glob patterns to include
-        exclude_patterns: Optional list of patterns to exclude
+        positional_files: Files passed as positional arguments (already shell-expanded)
+        include_patterns: List of glob patterns to include (--include flags)
+        exclude_patterns: List of glob patterns to exclude (--exclude flags)
 
     Returns:
-        List of file paths matching the patterns
+        Sorted list of unique file paths
+
+    Raises:
+        ValueError: If no files result from any source
     """
     files = set()
 
-    for pattern in include_patterns:
-        # Expand user home directory
-        expanded = os.path.expanduser(pattern)
-        # Find matching files
-        matches = glob.glob(expanded, recursive=True)
-        files.update(matches)
+    # 1. Add positional files (already shell-expanded)
+    if positional_files:
+        files.update(positional_files)
 
-    # Apply exclusions
+    # 2. Expand each --include pattern via glob (recursive=True)
+    if include_patterns:
+        for pattern in include_patterns:
+            expanded = os.path.expanduser(pattern)
+            matches = glob.glob(expanded, recursive=True)
+            if not matches:
+                print(f"Warning: Pattern '{pattern}' matched no files.", file=sys.stderr)
+            files.update(matches)
+
+    # 3. Raise error if no files from any source
+    if not files:
+        raise ValueError("No PO files specified. Use positional arguments or --include.")
+
+    # 4. Remove files matching any --exclude pattern
     if exclude_patterns:
         excluded = set()
         for pattern in exclude_patterns:
@@ -47,6 +62,11 @@ def discover_po_files(
             excluded.update(matches)
         files -= excluded
 
+    # 5. Raise error if all files were excluded
+    if not files:
+        raise ValueError("No PO files remain after applying --exclude patterns.")
+
+    # 6. Return sorted list of paths
     return sorted(files)
 
 
@@ -115,10 +135,14 @@ def cmd_lint(args: argparse.Namespace) -> int:
 
         elif args.include:
             # Multi-file mode with glob patterns
-            files = discover_po_files(args.include, args.exclude)
-
-            if not files:
-                print("Error: No PO files found matching patterns", file=sys.stderr)
+            try:
+                files = resolve_po_files(
+                    positional_files=None,
+                    include_patterns=args.include,
+                    exclude_patterns=args.exclude
+                )
+            except ValueError as e:
+                print(f"Error: {e}", file=sys.stderr)
                 return 1
 
             # Validate all files exist
@@ -287,7 +311,7 @@ def cmd_import(args: argparse.Namespace) -> int:
 
         # Validate language
         try:
-            lang = infer_language(args.master_csv, args.lang if hasattr(args, 'lang') else None)
+            lang = infer_language(args.master, args.lang if hasattr(args, 'lang') else None)
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
@@ -299,15 +323,15 @@ def cmd_import(args: argparse.Namespace) -> int:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
-        # Discover PO files
-        if not args.po_files:
-            print("Error: Must specify at least one PO file", file=sys.stderr)
-            return 1
-
-        files = discover_po_files(args.po_files, args.exclude if hasattr(args, 'exclude') else None)
-
-        if not files:
-            print("Error: No PO files found matching patterns", file=sys.stderr)
+        # Resolve PO files from positional + --include - --exclude
+        try:
+            files = resolve_po_files(
+                positional_files=args.po_files if args.po_files else None,
+                include_patterns=args.include if hasattr(args, 'include') and args.include else None,
+                exclude_patterns=args.exclude if hasattr(args, 'exclude') and args.exclude else None
+            )
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
             return 1
 
         # Validate all files exist
@@ -331,17 +355,17 @@ def cmd_import(args: argparse.Namespace) -> int:
                 return 1
 
         # Check if master exists
-        if Path(args.master_csv).exists():
-            existing = load_master(args.master_csv)
+        if Path(args.master).exists():
+            existing = load_master(args.master)
             result = merge_master(existing, entries, glossary, context_rules)
         else:
             result = create_master(entries, glossary, context_rules)
 
         # Save master CSV
-        save_master(result, args.master_csv)
+        save_master(result, args.master)
 
         # Print statistics to stderr
-        print(f"\nMaster CSV: {args.master_csv}", file=sys.stderr)
+        print(f"\nMaster CSV: {args.master}", file=sys.stderr)
         print(f"  Language: {lang}", file=sys.stderr)
         print(f"  Total entries: {len(result)}", file=sys.stderr)
 
@@ -374,28 +398,28 @@ def cmd_export(args: argparse.Namespace) -> int:
 
         # Validate language (for informational purposes)
         try:
-            lang = infer_language(args.master_csv, args.lang if hasattr(args, 'lang') else None)
+            lang = infer_language(args.master, args.lang if hasattr(args, 'lang') else None)
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
             return 1
 
         # Load master CSV
-        if not Path(args.master_csv).exists():
-            print(f"Error: Master CSV not found: {args.master_csv}", file=sys.stderr)
+        if not Path(args.master).exists():
+            print(f"Error: Master CSV not found: {args.master}", file=sys.stderr)
             return 1
 
-        master_dict = load_master(args.master_csv)
+        master_dict = load_master(args.master)
         master_entries = list(master_dict.values())
 
-        # Discover PO files
-        if not args.po_files:
-            print("Error: Must specify at least one PO file", file=sys.stderr)
-            return 1
-
-        files = discover_po_files(args.po_files, args.exclude if hasattr(args, 'exclude') else None)
-
-        if not files:
-            print("Error: No PO files found matching patterns", file=sys.stderr)
+        # Resolve PO files from positional + --include - --exclude
+        try:
+            files = resolve_po_files(
+                positional_files=args.po_files if args.po_files else None,
+                include_patterns=args.include if hasattr(args, 'include') and args.include else None,
+                exclude_patterns=args.exclude if hasattr(args, 'exclude') and args.exclude else None
+            )
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
             return 1
 
         # Validate all files exist
@@ -470,6 +494,67 @@ def main() -> int:
     Returns:
         Exit code
     """
+    # Create parent parsers for shared arguments
+
+    # PO file input — used by scan, import, export, lint
+    po_input_parser = argparse.ArgumentParser(add_help=False)
+    po_input_parser.add_argument(
+        'po_files',
+        nargs='*',
+        help='PO files (positional, shell-expanded)'
+    )
+    po_input_parser.add_argument(
+        '--include',
+        action='append',
+        help='Glob pattern for PO files (repeatable, e.g., "**/*.po")'
+    )
+    po_input_parser.add_argument(
+        '--exclude',
+        action='append',
+        help='Glob pattern to exclude (repeatable)'
+    )
+
+    # Sort control — used by scan, import, export
+    sort_parser = argparse.ArgumentParser(add_help=False)
+    sort_parser.add_argument(
+        '--sort-by',
+        choices=['msgid', 'source_file', 'fuzzy', 'msgstr'],
+        help='Sort order for output'
+    )
+
+    # Glossary — used by scan, import, lint
+    glossary_parser = argparse.ArgumentParser(add_help=False)
+    glossary_parser.add_argument(
+        '--glossary',
+        help='Path to YAML glossary file'
+    )
+
+    # Context — used by scan, import
+    context_parser = argparse.ArgumentParser(add_help=False)
+    context_parser.add_argument(
+        '--context-rules',
+        help='Path to YAML context rules file'
+    )
+    context_parser.add_argument(
+        '--preset',
+        help='Use built-in context preset (e.g., "django")'
+    )
+
+    # Master CSV — used by import, export
+    master_parser = argparse.ArgumentParser(add_help=False)
+    master_parser.add_argument(
+        '--master',
+        required=True,
+        help='Path to master CSV file (*-<lang>.csv)'
+    )
+
+    # Language — used by import, export
+    lang_parser = argparse.ArgumentParser(add_help=False)
+    lang_parser.add_argument(
+        '--lang',
+        help='Override target language (instead of inferring from filename)'
+    )
+
     parser = argparse.ArgumentParser(
         prog="polyglott",
         description="Parse gettext PO files and export to CSV for translation workflow management"
@@ -483,9 +568,11 @@ def main() -> int:
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # Scan subcommand
+    # Scan subcommand — single file only (Stage 3 behavior)
+    # Does NOT use po_input_parser because it doesn't accept --include
     scan_parser = subparsers.add_parser(
         "scan",
+        parents=[sort_parser, glossary_parser, context_parser],
         help="Scan PO file and export to CSV"
     )
 
@@ -499,85 +586,18 @@ def main() -> int:
         help="Output CSV file (default: stdout)"
     )
 
-    scan_parser.add_argument(
-        "--sort-by",
-        choices=["msgid", "source_file", "fuzzy", "msgstr"],
-        help="Sort output by field"
-    )
-
-    scan_parser.add_argument(
-        "--context-rules",
-        help="Path to YAML context rules file"
-    )
-
-    scan_parser.add_argument(
-        "--preset",
-        help="Use built-in context preset (e.g., 'django')"
-    )
-
-    scan_parser.add_argument(
-        "--glossary",
-        help="Path to YAML glossary file"
-    )
-
-    # Import subcommand
+    # Import subcommand — uses all relevant parent parsers
     import_parser = subparsers.add_parser(
         "import",
+        parents=[master_parser, po_input_parser, sort_parser, glossary_parser, context_parser, lang_parser],
         help="Import PO file translations into master CSV"
     )
 
-    import_parser.add_argument(
-        "master_csv",
-        help="Path to master CSV file (*-<lang>.csv)"
-    )
-
-    import_parser.add_argument(
-        "po_files",
-        nargs="+",
-        help="One or more PO files or glob patterns"
-    )
-
-    import_parser.add_argument(
-        "--glossary",
-        help="Path to YAML glossary file (for auto-scoring)"
-    )
-
-    import_parser.add_argument(
-        "--context-rules",
-        help="Path to YAML context rules file"
-    )
-
-    import_parser.add_argument(
-        "--preset",
-        help="Use built-in context preset (e.g., 'django')"
-    )
-
-    import_parser.add_argument(
-        "--lang",
-        help="Override target language (instead of inferring from filename)"
-    )
-
-    import_parser.add_argument(
-        "--exclude",
-        action="append",
-        help="Exclude pattern(s) (repeatable)"
-    )
-
-    # Export subcommand
+    # Export subcommand — uses parent parsers + own flags
     export_parser = subparsers.add_parser(
         "export",
+        parents=[master_parser, po_input_parser, sort_parser, lang_parser],
         help="Export master CSV translations back to PO files"
-    )
-
-    export_parser.add_argument(
-        "master_csv",
-        help="Path to master CSV file (*-<lang>.csv)"
-    )
-
-    export_parser.add_argument(
-        "po_files",
-        nargs="+",
-        help="One or more PO files or glob patterns"
     )
 
     export_parser.add_argument(
@@ -594,25 +614,16 @@ def main() -> int:
     )
 
     export_parser.add_argument(
-        "--lang",
-        help="Override target language (instead of inferring from filename)"
-    )
-
-    export_parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Show per-entry detail"
     )
 
-    export_parser.add_argument(
-        "--exclude",
-        action="append",
-        help="Exclude pattern(s) (repeatable)"
-    )
-
-    # Lint subcommand
+    # Lint subcommand — uses glossary and context parsers, but has custom file handling
+    # Cannot use po_input_parser because lint has optional positional 'file' instead of 'po_files'
     lint_parser = subparsers.add_parser(
         "lint",
+        parents=[glossary_parser, context_parser],
         help="Check PO file(s) for quality issues"
     )
 
@@ -637,11 +648,6 @@ def main() -> int:
         "--exclude",
         action="append",
         help="Exclude pattern(s) (repeatable)"
-    )
-
-    lint_parser.add_argument(
-        "--glossary",
-        help="Path to YAML glossary file"
     )
 
     lint_parser.add_argument(
@@ -670,16 +676,6 @@ def main() -> int:
         action="append",
         dest="no_check",
         help="Exclude specified check(s) (repeatable)"
-    )
-
-    lint_parser.add_argument(
-        "--context-rules",
-        help="Path to YAML context rules file"
-    )
-
-    lint_parser.add_argument(
-        "--preset",
-        help="Use built-in context preset (e.g., 'django')"
     )
 
     # Parse arguments
