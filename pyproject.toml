@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
-    { name = "POlyglott Contributors" }
+    { name = "Gernot Lang", email = "gernot.lang@icloud.com" }
 ]
 keywords = ["gettext", "po", "translation", "i18n", "csv"]
 classifiers = [
