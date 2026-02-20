@@ -22,7 +22,7 @@ A tool for parsing gettext PO files and exporting them to CSV for translation wo
 ### From Source
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/gernot-lang/POlyglott.git
 cd polyglott
 python -m venv .venv
 source .venv/bin/activate
@@ -289,15 +289,15 @@ The master CSV has reserved POlyglott columns and supports user-added columns:
 
 **POlyglott Reserved Columns:**
 
-| Column            | Description                                             |
-|-------------------|---------------------------------------------------------|
-| `msgid`           | Source text (deduplication key)                         |
-| `msgstr`          | Translation text                                        |
-| `status`          | Translation status (see below)                          |
-| `score`           | Quality score (empty or "10" for glossary match)        |
-| `context`         | Inferred UI context                                     |
-| `context_sources` | Disambiguation info (when ambiguous)                    |
-| `candidate`       | Machine translation suggestion (when msgstr has content)|
+| Column            | Description                                              |
+|-------------------|----------------------------------------------------------|
+| `msgid`           | Source text (deduplication key)                          |
+| `msgstr`          | Translation text                                         |
+| `status`          | Translation status (see below)                           |
+| `score`           | Quality score (empty or "10" for glossary match)         |
+| `context`         | Inferred UI context                                      |
+| `context_sources` | Disambiguation info (when ambiguous)                     |
+| `candidate`       | Machine translation suggestion (when msgstr has content) |
 
 **Column Sovereignty:**
 You can add your own columns (e.g., `notes`, `reviewer`, `priority`, `client_approved`) and POlyglott will preserve them across all operations (import, translate, export). User columns are never modified, only preserved. Column order: POlyglott columns first, then user columns in their original order.
@@ -552,24 +552,27 @@ The translate subcommand:
 1. Filters master CSV by status (default: `empty`)
 2. Sends entries to DeepL API with sophisticated placeholder protection
 3. **Smart routing** - writes translation based on current `msgstr` state:
-   - If `msgstr` is empty → writes to `msgstr`, sets `status='machine'`, clears `candidate`
-   - If `msgstr` has content → writes to `candidate`, preserves `status` (non-destructive)
+    - If `msgstr` is empty → writes to `msgstr`, sets `status='machine'`, clears `candidate`
+    - If `msgstr` has content → writes to `candidate`, preserves `status` (non-destructive)
 4. Saves progress continuously (survives quota exceeded or network errors)
 5. Creates ephemeral glossary if `--glossary` provided
 
 **Non-Destructive Translation:**
 The `candidate` column stores machine translation suggestions when `msgstr` already has content. This allows you to:
+
 - Compare existing translation with fresh machine suggestion
 - Re-translate entries without losing the previous attempt
 - Review machine suggestions alongside human translations
 
 **Placeholder Protection (Strategy C):**
+
 - Wraps `%(name)s` and `{count}` in XML tags before sending to DeepL
 - Uses `tag_handling="xml"` with `ignore_tags="x"` API parameters
 - DeepL preserves placeholder content verbatim AND repositions for correct word order
 - Tested against 25 real Django admin translations with 48% exact match rate
 
 **Special Handling:**
+
 - **Passthrough strings**: OK, N/A, whitespace, punctuation-only, placeholder-only → copied as-is
 - **HTML entities**: &amp;, &lt;, &gt; decoded before translation, re-encoded after
 - **Multiline**: Each line translated separately to preserve formatting
@@ -578,6 +581,7 @@ The `candidate` column stores machine translation suggestions when `msgstr` alre
 #### Data Privacy
 
 DeepL API processes your translation data on their servers. Review DeepL's privacy policy before use:
+
 - https://www.deepl.com/privacy
 - https://www.deepl.com/pro-api/terms
 
@@ -730,7 +734,8 @@ POlyglott is under active development:
 - **Stage 3 (v0.3.0)**: ✅ Context inference from source code references
 - **Stage 4 (v0.4.0)**: ✅ Translation master CSV for multi-language management
 - **Stage 5 (v0.5.0)**: ✅ Import/export subcommands and bidirectional PO file sync
-- **Stage 6 (v0.6.0)**: DeepL integration for machine translation
+- **Stage 6 (v0.6.0)**: ✅ DeepL integration for machine translation
+- **Stage 7 (v0.7.0)**: ✅ Candidate column and column sovereignty
 
 See `prompts/` directory for detailed stage specifications.
 
