@@ -312,7 +312,7 @@ You can add your own columns (e.g., `notes`, `reviewer`, `priority`, `client_app
 | `rejected` | Rejected translation          | Mark as rejected to skip                    |
 | `conflict` | PO diverged from accepted     | Resolve manually, then re-accept            |
 | `stale`    | Removed from PO files         | Entry no longer in codebase                 |
-| `machine`  | Machine-translated (future)   | For auto-translated entries                 |
+| `machine`  | Machine-translated via DeepL  | Auto-translated, needs human review         |
 
 #### Complete Workflow Example
 
@@ -487,11 +487,11 @@ The merge workflow implements these status transitions:
 #### Notes
 
 - `--master` and `-o/--output` are mutually exclusive
-- Filename must match `polyglott-accepted-<lang>.csv` pattern
+- Filename must use `-<lang>.csv` suffix (e.g., `master-de.csv`, `help-pages-fr.csv`)
 - CSV uses UTF-8 BOM, all fields quoted, sorted by msgid
 - Score preservation: existing scores never overwritten (human decisions)
 - Context refresh: always recomputed from current PO files
-- Plurals and msgctxt: currently ignored in master CSV (v0.4.0 scope)
+- Plurals and msgctxt: not yet supported in master CSV
 
 ### Translate Command
 
@@ -616,10 +616,10 @@ polyglott export --master master-de.csv --status machine locale/de/LC_MESSAGES/*
 polyglott scan de.po --sort-by msgid -o german.csv
 ```
 
-**Scan multiple languages:**
+**Import multiple PO files:**
 
 ```bash
-polyglott scan --include "locales/*/LC_MESSAGES/*.po" -o all_translations.csv
+polyglott import --master master-de.csv --include "locales/*/LC_MESSAGES/*.po"
 ```
 
 **Lint with glossary in CI:**
@@ -722,7 +722,9 @@ src/polyglott/
 ├── linter.py        # Quality checks and glossary
 ├── formatter.py     # Text output formatting
 ├── context.py       # Context inference from source references
-└── master.py        # Master CSV management and merge workflow
+├── master.py        # Master CSV management and merge workflow
+├── po_writer.py     # Export master CSV translations back to PO files
+└── translate.py     # DeepL machine translation integration
 ```
 
 ## Roadmap
@@ -737,7 +739,7 @@ POlyglott is under active development:
 - **Stage 6 (v0.6.0)**: ✅ DeepL integration for machine translation
 - **Stage 7 (v0.7.0)**: ✅ Candidate column and column sovereignty
 
-See `prompts/` directory for detailed stage specifications.
+See `prompts/` directory for detailed stage specifications, `reviews/` for code review reports, and `AI_DEVELOPMENT.md` for how this project was built with Claude Code.
 
 ## Contributing
 
@@ -760,4 +762,5 @@ Built with:
 - [polib](https://pypi.org/project/polib/) - PO file parsing
 - [pandas](https://pandas.pydata.org/) - Data manipulation and CSV export
 - [pyyaml](https://pyyaml.org/) - Glossary file parsing
+- [deepl-python](https://github.com/DeepLcom/deepl-python) - DeepL API client
 - [pytest](https://pytest.org/) - Testing framework
